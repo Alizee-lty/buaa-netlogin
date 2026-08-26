@@ -9,6 +9,10 @@ the full license text.
 
 Major changes in this version:
 - Added a modern Srun challenge-based login loop.
-- Added environment-variable based credentials for Docker and local runs.
-- Added macOS launchd and Linux systemd user-service autostart scripts.
-- Updated Docker startup to use the modern login script.
+- Consolidated all user actions into one interactive entry point.
+- Removed the legacy protocol implementation and Docker deployment.
+- Enabled TLS certificate verification by default.
+- Added a friendly multi-level arrow-key terminal interface.
+- Added a boot-time system service with root-only stored credentials.
+- Uses systemd credentials and a sandboxed dynamic user when supported.
+- Added offline protocol, configuration, and service tests.
