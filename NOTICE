@@ -1,0 +1,14 @@
+pySrun4k_BeihangLogin_fixed
+
+This project is a modified version of pySrun4k_BeihangLogin:
+https://github.com/ywz978020607/pySrun4k_BeihangLogin
+
+The original project is distributed under the GNU General Public License
+version 3. This modified version keeps the same license. See LICENSE for
+the full license text.
+
+Major changes in this version:
+- Added a modern Srun challenge-based login loop.
+- Added environment-variable based credentials for Docker and local runs.
+- Added macOS launchd and Linux systemd user-service autostart scripts.
+- Updated Docker startup to use the modern login script.
