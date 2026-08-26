@@ -134,10 +134,33 @@ def ask_service_credentials() -> Dict[str, Any]:
     }
 
 
+def verify_service_credentials(credentials: Dict[str, Any]) -> None:
+    print("正在检查网关和登录信息…")
+    client = SrunClient(
+        gateway=str(credentials["gateway"]),
+        timeout=float(credentials["timeout"]),
+        verify_tls=True,
+    )
+    status = client.status()
+    if status.online:
+        print("✓ 网关可以访问，当前机器已经在线。")
+        print("  为避免中断现有网络，本次不会强制注销测试密码。")
+        return
+    client.login(str(credentials["username"]), str(credentials["password"]))
+    print("✓ 登录信息验证成功，校园网已经连通。")
+
+
 def privileged_install() -> None:
     if not service.is_root():
         raise RuntimeError("需要 root 权限")
     credentials = ask_service_credentials()
+    try:
+        verify_service_credentials(credentials)
+    except SrunError as error:
+        print("登录预检没有通过：{}".format(error))
+        if not confirm("仍然继续安装吗？", default=False):
+            print("已取消安装，没有修改系统服务。")
+            return
     print("正在安装程序和开机服务，这可能需要一小会儿…")
     service.install(PROJECT_DIR, credentials)
     print("✓ 安装完成！从下一次开机开始，系统会自动连接校园网。")
@@ -147,6 +170,13 @@ def privileged_update_credentials() -> None:
     if not service.is_root():
         raise RuntimeError("需要 root 权限")
     credentials = ask_service_credentials()
+    try:
+        verify_service_credentials(credentials)
+    except SrunError as error:
+        print("登录预检没有通过：{}".format(error))
+        if not confirm("仍然保存这组登录信息吗？", default=False):
+            print("已取消更新，原来的登录信息保持不变。")
+            return
     service.update_credentials(credentials)
     print("✓ 登录信息已更新，后台服务也已重新启动。")
 

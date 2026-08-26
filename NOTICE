@@ -16,3 +16,5 @@ Major changes in this version:
 - Added a boot-time system service with root-only stored credentials.
 - Uses systemd credentials and a sandboxed dynamic user when supported.
 - Added offline protocol, configuration, and service tests.
+- Added transactional service installation with automatic rollback.
+- Added expired-challenge retry and fixed-vector protocol tests.

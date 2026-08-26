@@ -12,6 +12,7 @@ from typing import Any, Dict
 
 SERVICE_NAME = "buaa-netlogin.service"
 INSTALL_DIR = Path("/opt/buaa-netlogin")
+BACKUP_DIR = Path("/opt/buaa-netlogin.previous")
 CONFIG_DIR = Path("/etc/buaa-netlogin")
 CREDENTIAL_PATH = CONFIG_DIR / "account.json"
 UNIT_PATH = Path("/etc/systemd/system") / SERVICE_NAME
@@ -105,12 +106,24 @@ def _make_root_owned(path: Path) -> None:
 
 def _system_python() -> Path:
     preferred = Path("/usr/bin/python3")
-    if preferred.is_file() and os.access(preferred, os.X_OK):
+    if preferred.is_file() and os.access(preferred, os.X_OK) and _python_supported(preferred):
         return preferred
     discovered = shutil.which("python3")
     if not discovered:
         raise RuntimeError("没有找到系统 Python 3，请先安装 python3")
-    return Path(discovered)
+    python = Path(discovered)
+    if not _python_supported(python):
+        raise RuntimeError("需要 Python 3.8 或更高版本，当前系统 Python 版本过低")
+    return python
+
+
+def _python_supported(python: Path) -> bool:
+    result = subprocess.run(
+        [str(python), "-c", "import sys; raise SystemExit(sys.version_info < (3, 8))"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
 
 
 def _can_import_requests(python: Path) -> bool:
@@ -165,9 +178,25 @@ def _write_credentials(data: Dict[str, Any]) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     CONFIG_DIR.chmod(0o700)
     temporary = CREDENTIAL_PATH.with_suffix(".tmp")
-    temporary.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8")
-    temporary.chmod(0o600)
-    temporary.replace(CREDENTIAL_PATH)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(str(temporary), flags, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            descriptor = -1
+            stream.write(json.dumps(data, ensure_ascii=False) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(str(temporary), str(CREDENTIAL_PATH))
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
     if is_root() and hasattr(os, "chown"):
         os.chown(CONFIG_DIR, 0, 0)
         os.chown(CREDENTIAL_PATH, 0, 0)
@@ -225,27 +254,103 @@ def _write_unit(python: Path) -> None:
     UNIT_PATH.chmod(0o644)
 
 
+def _read_optional(path: Path) -> Any:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def _restore_optional(path: Path, content: Any, mode: int) -> None:
+    if content is None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".restore")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(str(temporary), flags, mode)
+    try:
+        os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "wb") as stream:
+            descriptor = -1
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(str(temporary), str(path))
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _rollback_install(previous_unit: Any, previous_credential: Any, was_enabled: bool, was_active: bool) -> None:
+    print("安装没有完成，正在恢复之前的状态…", flush=True)
+    subprocess.run(["systemctl", "disable", "--now", SERVICE_NAME], check=False)
+    if INSTALL_DIR.exists():
+        shutil.rmtree(INSTALL_DIR)
+    if BACKUP_DIR.exists():
+        BACKUP_DIR.rename(INSTALL_DIR)
+    _restore_optional(UNIT_PATH, previous_unit, 0o644)
+    if previous_credential is None:
+        if CONFIG_DIR.exists():
+            shutil.rmtree(CONFIG_DIR)
+    else:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        CONFIG_DIR.chmod(0o700)
+        _restore_optional(CREDENTIAL_PATH, previous_credential, 0o600)
+    subprocess.run(["systemctl", "daemon-reload"], check=False)
+    if previous_unit is not None and was_enabled:
+        subprocess.run(["systemctl", "enable", SERVICE_NAME], check=False)
+    if previous_unit is not None and was_active:
+        subprocess.run(["systemctl", "start", SERVICE_NAME], check=False)
+
+
 def install(source: Path, credentials: Dict[str, Any]) -> None:
     if not is_root():
         raise RuntimeError("安装系统服务需要 root 权限")
-    _copy_program(source)
-    python = _ensure_runtime()
-    _write_credentials(credentials)
-    _write_unit(python)
-    subprocess.run(["systemctl", "daemon-reload"], check=True)
-    print("[5/5] 正在启动服务并检查运行状态…", flush=True)
-    subprocess.run(["systemctl", "enable", "--now", SERVICE_NAME], check=True)
-    for _ in range(10):
-        if subprocess.run(["systemctl", "is-active", "--quiet", SERVICE_NAME]).returncode == 0:
-            return
-        time.sleep(0.2)
-    details = subprocess.run(
-        ["journalctl", "-u", SERVICE_NAME, "-n", "8", "--no-pager"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    ).stdout.strip()
-    raise RuntimeError("服务没有正常启动。最近日志：\n{}".format(details or "暂无日志"))
+    if source.resolve() == INSTALL_DIR.resolve():
+        raise RuntimeError("请从源码仓库运行更新，不要直接在 /opt/buaa-netlogin 中更新")
+    previous_unit = _read_optional(UNIT_PATH)
+    previous_credential = _read_optional(CREDENTIAL_PATH)
+    was_enabled = enabled()
+    was_active = active()
+    if installed():
+        subprocess.run(["systemctl", "stop", SERVICE_NAME], check=False)
+    if BACKUP_DIR.exists():
+        shutil.rmtree(BACKUP_DIR)
+    if INSTALL_DIR.exists():
+        INSTALL_DIR.rename(BACKUP_DIR)
+    try:
+        _copy_program(source)
+        python = _ensure_runtime()
+        _write_credentials(credentials)
+        _write_unit(python)
+        subprocess.run(["systemctl", "daemon-reload"], check=True)
+        print("[5/5] 正在启动服务并检查运行状态…", flush=True)
+        subprocess.run(["systemctl", "enable", "--now", SERVICE_NAME], check=True)
+        for _ in range(10):
+            if subprocess.run(["systemctl", "is-active", "--quiet", SERVICE_NAME]).returncode == 0:
+                shutil.rmtree(BACKUP_DIR, ignore_errors=True)
+                return
+            time.sleep(0.2)
+        details = subprocess.run(
+            ["journalctl", "-u", SERVICE_NAME, "-n", "8", "--no-pager"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        ).stdout.strip()
+        raise RuntimeError("服务没有正常启动。最近日志：\n{}".format(details or "暂无日志"))
+    except Exception:
+        _rollback_install(previous_unit, previous_credential, was_enabled, was_active)
+        raise
 
 
 def update_credentials(credentials: Dict[str, Any]) -> None:

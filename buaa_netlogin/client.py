@@ -138,6 +138,17 @@ class SrunClient:
         return find("acid", "1"), ip
 
     def login(self, username: str, password: str) -> None:
+        for attempt in range(2):
+            result = self._login_once(username, password)
+            if result.get("res") == "ok" or result.get("error") == "ok":
+                return
+            error_code = result.get("error")
+            if error_code == "challenge_expire_error" and attempt == 0:
+                continue
+            reason = result.get("error_msg") or error_code or "未知错误"
+            raise SrunError("登录失败：{}".format(reason))
+
+    def _login_once(self, username: str, password: str) -> Dict[str, Any]:
         ac_id, ip = self._portal_config()
         challenge = self._jsonp("/cgi-bin/get_challenge", {"username": username, "ip": ip})
         token = challenge.get("challenge")
@@ -153,13 +164,10 @@ class SrunClient:
         checksum_text = str(token) + str(token).join((username, password_hash, ac_id, ip, n, type_value, info))
         checksum = hashlib.sha1(checksum_text.encode("utf-8")).hexdigest()
 
-        result = self._jsonp("/cgi-bin/srun_portal", {
+        return self._jsonp("/cgi-bin/srun_portal", {
             "action": "login", "username": username, "password": "{MD5}" + password_hash,
             "ac_id": ac_id, "ip": ip, "chksum": checksum, "info": info, "n": n, "type": type_value,
         })
-        if result.get("res") != "ok" and result.get("error") != "ok":
-            reason = result.get("error_msg") or result.get("error") or "未知错误"
-            raise SrunError("登录失败：{}".format(reason))
 
     def logout(self, username: str) -> None:
         status = self.status()

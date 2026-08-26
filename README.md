@@ -50,12 +50,14 @@ python3 -m venv .venv
 程序会请求一次 `sudo` 权限，然后由 root 进程隐藏输入校园网账号密码。它会自动完成：
 
 1. 将运行程序安装到 `/opt/buaa-netlogin`；
-2. 创建独立 Python 虚拟环境并安装依赖；
+2. 检查系统 Python；仅在缺少依赖时创建独立虚拟环境；
 3. 将凭据写入 root-only 配置目录；
 4. 安装系统级 `buaa-netlogin.service`；
 5. 执行 `systemctl enable --now buaa-netlogin.service`。
 
-安装过程中会显示五个阶段的进度。程序优先检查 `/usr/bin/python3` 是否已经能导入 `requests`；如果可以，就直接使用系统环境，不创建虚拟环境，也不需要联网下载。只有系统缺少 `requests` 时，才会使用系统 Python 和 `--copies` 创建 `/opt/buaa-netlogin/.venv`，并明确提示需要访问 Python 软件源。下载设置了超时和重试次数，失败后会清理不完整环境。
+安装过程中会显示五个阶段的进度。安装器会先确认 Python 版本不低于 3.8，并优先检查 `/usr/bin/python3` 是否已经能导入 `requests`；如果可以，就直接使用系统环境，不创建虚拟环境，也不需要联网下载。只有系统缺少 `requests` 时，才会使用系统 Python 和 `--copies` 创建 `/opt/buaa-netlogin/.venv`，并明确提示需要访问 Python 软件源。下载设置了超时和重试次数，失败后会清理不完整环境。更新已有安装时会先保留旧版本；复制、依赖安装或服务启动任一步失败，都会恢复原程序、凭据和服务状态。
+
+保存前程序会访问校园网网关进行预检：机器离线时会实际尝试登录，以检查账号密码；机器已经在线时，为避免强制注销中断网络，只验证网关可访问，无法同时确认新密码是否正确。
 
 服务属于 `multi-user.target`，因此不需要用户登录，也不依赖桌面密钥环。
 
