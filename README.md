@@ -1,6 +1,6 @@
-# pySrun4k
+# buaa-netlogin
 ## 简介
-pySrun4k是一个模仿Srun4k认证客户端协议，用Python3实现的认证客户端。
+buaa-netlogin 是一个用于北航校园网的自动登录客户端，基于 Srun 认证协议，用 Python3 实现。
 
 实现了登录，检查在线状态，登出当前终端，登出所有终端功能。
 
