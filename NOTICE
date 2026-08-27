@@ -18,3 +18,5 @@ Major changes in this version:
 - Added offline protocol, configuration, and service tests.
 - Added transactional service installation with automatic rollback.
 - Added expired-challenge retry and fixed-vector protocol tests.
+- Added secure macOS boot-time support using a system LaunchDaemon and
+  service-user-only credentials, without exposing secrets in plist or arguments.

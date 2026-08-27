@@ -1,6 +1,6 @@
 # buaa-netlogin
 
-一个轻量、友好的北航校园网自动登录工具。支持现代 Srun challenge 认证、断线重连，以及真正发生在用户登录之前的 systemd 开机自启动。
+一个轻量、友好的北航校园网自动登录工具。支持现代 Srun challenge 认证、断线重连，以及 Linux systemd 和 macOS launchd 的系统级开机自启动。
 
 ## 为什么用它
 
@@ -8,8 +8,9 @@
 - 使用方向键和回车操作的多级中文菜单
 - 不需要记忆安装命令，也不会一次展示大量选项
 - 普通登录时密码只存在于当前进程内存
-- 开机服务的凭据仅允许 root 读取
-- systemd 247+ 使用 credentials 在运行时提供密码
+- 开机服务凭据仅允许服务身份读取（Linux 为 root，macOS 为所属本地用户）
+- Linux systemd 247+ 使用 credentials 在运行时提供密码
+- macOS 使用系统级 LaunchDaemon，无需登录桌面或解锁用户钥匙串
 - 密码不会进入命令参数、环境变量、service 文件或日志
 - HTTPS 证书校验始终开启
 - 不需要 Docker
@@ -47,7 +48,11 @@ python3 -m venv .venv
   → 安装或更新开机自动联网
 ```
 
-程序会请求一次 `sudo` 权限，然后由 root 进程隐藏输入校园网账号密码。它会自动完成：
+程序会请求一次 `sudo` 权限，然后由 root 进程隐藏输入校园网账号密码。菜单会自动识别 Linux 或 macOS。
+
+### Linux（systemd）
+
+Linux 会自动完成：
 
 1. 将运行程序安装到 `/opt/buaa-netlogin`；
 2. 检查系统 Python；仅在缺少依赖时创建独立虚拟环境；
@@ -61,6 +66,22 @@ python3 -m venv .venv
 
 服务属于 `multi-user.target`，因此不需要用户登录，也不依赖桌面密钥环。
 
+### macOS（launchd）
+
+macOS 使用 `/Library/LaunchDaemons/edu.buaa.netlogin.plist` 中的系统级 `LaunchDaemon`。它在系统开机阶段由 launchd 启动，不依赖某个用户登录，也不依赖用户登录钥匙串。程序和凭据位于：
+
+```text
+/Library/Application Support/BUAA NetLogin/                     root:wheel 755
+/Library/Application Support/BUAA NetLogin/config/              当前用户 700
+/Library/Application Support/BUAA NetLogin/config/account.json  当前用户 600
+```
+
+LaunchDaemon 在开机时由系统加载，并以执行安装的本地用户身份运行；不必登录图形桌面。这样不会让 Homebrew 等用户管理的 Python 获得 root 权限。密码与 plist 分开保存，不会进入 plist、命令参数、环境变量或日志。日志位于 `/Library/Logs/BUAA NetLogin/`，可以从菜单持续查看。
+
+这里有意不使用用户 Keychain：用户登录钥匙串通常要到用户登录时才解锁，无法满足“reboot 后无人登录也要联网”。系统级服务必须能在开机时恢复凭据，因此使用仅服务所属用户可读的文件；该用户、root 或已经完全控制本机的攻击者仍能读取它，这是无人值守认证无法消除的安全边界。
+
+macOS 13 及以上会在“系统设置 → 通用 → 登录项”中展示后台项目。安装器会立即加载并检查服务；如果用户后来在系统设置中主动禁用该后台项目，系统会阻止它开机运行，需要重新允许。程序不会尝试绕过这一系统安全开关。
+
 管理功能都在“自动运行”二级菜单中：
 
 - 安装或更新开机自动联网
@@ -72,7 +93,7 @@ python3 -m venv .venv
 
 进入“查看后台日志”后，日志会持续刷新。按 `Ctrl+C` 即可返回菜单，这只会退出日志查看，不会停止后台自动联网服务。
 
-也可以使用系统命令检查：
+Linux 也可以使用系统命令检查：
 
 ```bash
 sudo systemctl status buaa-netlogin
@@ -83,7 +104,7 @@ sudo journalctl -u buaa-netlogin -f
 
 一次性登录使用 Python 隐藏输入，密码不会保存。
 
-开机无人值守必须在本机保存可恢复的登录凭据。凭据位于：
+开机无人值守必须在本机保存可恢复的登录凭据。Linux 凭据位于：
 
 ```text
 /etc/buaa-netlogin/              root:root 700
@@ -99,6 +120,8 @@ sudo journalctl -u buaa-netlogin -f
 - 较旧的 systemd 会由 root 服务直接读取同一个 600 文件，仅用于兼容；
 - root 或已经完全控制本机的攻击者仍然能够读取凭据，这是任何开机无人值守方案都无法消除的边界。
 
+macOS 使用上文所述的用户专用 Application Support 凭据目录，遵循同一安全边界。
+
 卸载时默认同时删除程序、service 和保存的凭据。
 
 ## 非交互命令
@@ -111,7 +134,7 @@ sudo journalctl -u buaa-netlogin -f
 .venv/bin/python main.py watch
 ```
 
-内部 systemd 和安装命令以下划线开头，不属于公共接口。
+内部 systemd/launchd 安装命令以下划线开头，不属于公共接口。
 
 ## 项目结构
 
@@ -121,6 +144,7 @@ sudo journalctl -u buaa-netlogin -f
 ├── buaa_netlogin/
 │   ├── client.py       # 现代 Srun 协议
 │   ├── service.py      # 系统级安装、凭据和 systemd 管理
+│   ├── macos_service.py # macOS LaunchDaemon、凭据和日志管理
 │   ├── settings.py     # 非敏感的用户偏好
 │   └── ui.py           # 方向键多级菜单
 ├── tests/

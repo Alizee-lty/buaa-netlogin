@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from buaa_netlogin import SrunClient, SrunError
-from buaa_netlogin import service
+if sys.platform == "darwin":
+    from buaa_netlogin import macos_service as service
+else:
+    from buaa_netlogin import service
 from buaa_netlogin.settings import load_settings, save_settings
 from buaa_netlogin.ui import confirm, pause, select
 
@@ -235,8 +238,12 @@ def service_menu(settings: Dict[str, Any]) -> None:
             if choice == "foreground":
                 foreground_watch(settings)
             elif choice == "install":
-                print("\n程序将安装到 /opt/buaa-netlogin，并创建系统级开机服务。")
-                print("登录信息会保存在仅 root 可读的 /etc/buaa-netlogin 中。")
+                if sys.platform == "darwin":
+                    print("\n程序将安装到系统 Application Support，并创建系统级 LaunchDaemon。")
+                    print("登录信息只允许当前本地用户读取，不需要登录桌面或解锁钥匙串。")
+                else:
+                    print("\n程序将安装到 /opt/buaa-netlogin，并创建系统级开机服务。")
+                    print("登录信息会保存在仅 root 可读的 /etc/buaa-netlogin 中。")
                 if confirm("准备好后继续吗？", default=True):
                     print("接下来系统会请求一次 sudo 权限。")
                     service.run_as_root("_system-install")
@@ -290,8 +297,12 @@ def help_menu(settings: Dict[str, Any]) -> None:
             if choice == "preferences":
                 edit_preferences(settings)
             elif choice == "security":
-                print("\n一次性登录不会保存密码。开机服务的密码保存在 /etc/buaa-netlogin，")
-                print("目录权限为 700、文件权限为 600，仅 root 可读；支持时由 systemd credentials 在运行时传入。")
+                if sys.platform == "darwin":
+                    print("\n一次性登录不会保存密码。LaunchDaemon 凭据位于系统 Application Support，")
+                    print("目录权限为 700、文件权限为 600，仅服务所属用户可读；密码不进入 plist、参数、环境变量或日志。")
+                else:
+                    print("\n一次性登录不会保存密码。开机服务的密码保存在 /etc/buaa-netlogin，")
+                    print("目录权限为 700、文件权限为 600，仅 root 可读；支持时由 systemd credentials 在运行时传入。")
             elif choice == "about":
                 print("\nbuaa-netlogin 是一个 GPL-3.0 的北航校园网轻量登录工具。")
                 print("它使用现代 Srun challenge 协议，不需要 Docker。")
