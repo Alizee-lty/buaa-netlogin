@@ -112,12 +112,14 @@ def _system_python() -> Path:
     if preferred.is_file() and os.access(preferred, os.X_OK) and _python_supported(preferred):
         return preferred
     discovered = shutil.which("python3")
-    candidates = []
-    if discovered:
-        candidates.append(Path(discovered))
     # The installer is commonly started from a newer virtual environment while
     # the distribution Python is too old. Use it to create the service venv.
-    candidates.append(Path(sys.executable))
+    # Check the interpreter running the installer before PATH's python3. On
+    # macOS, PATH may resolve to the old system Python even when the installer
+    # itself is running from a newer virtual environment.
+    candidates = [Path(sys.executable)]
+    if discovered:
+        candidates.append(Path(discovered))
     seen = set()
     for python in candidates:
         resolved = python.resolve()
