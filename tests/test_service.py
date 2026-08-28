@@ -4,8 +4,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from buaa_netlogin import service
-from buaa_netlogin.service import build_unit
+from netlogin import service
+from netlogin.service import build_unit
 
 
 class ServiceTests(unittest.TestCase):
@@ -38,10 +38,22 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(credential.read_bytes(), b'{"password":"old"}\n')
 
     def test_python_support_requires_38_or_newer(self):
-        with patch("buaa_netlogin.service.subprocess.run") as run:
+        with patch("netlogin.service.subprocess.run") as run:
             run.return_value = Mock(returncode=0)
             self.assertTrue(service._python_supported(Path("/usr/bin/python3")))
             self.assertIn("sys.version_info < (3, 8)", run.call_args.args[0][2])
+
+    def test_newer_current_python_can_bootstrap_when_system_python_is_old(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = Path(directory) / "python3"
+            current.touch()
+            current.chmod(0o755)
+            with patch.object(service, "_python_supported", side_effect=lambda path: path == current), patch.object(
+                service, "_python_version", return_value="3.6.15"
+            ), patch.object(service.shutil, "which", return_value="/usr/bin/python3"), patch.object(
+                service.sys, "executable", str(current)
+            ), patch.object(service.os, "access", return_value=True):
+                self.assertEqual(service._system_python(), current)
 
     def test_failed_install_restores_previous_version(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -76,7 +88,7 @@ class ServiceTests(unittest.TestCase):
                 service, "enabled", return_value=True
             ), patch.object(service, "active", return_value=True), patch.object(
                 service, "_copy_program", side_effect=fail_copy
-            ), patch("buaa_netlogin.service.subprocess.run", return_value=completed) as run:
+            ), patch("netlogin.service.subprocess.run", return_value=completed) as run:
                 with self.assertRaisesRegex(RuntimeError, "copy failed"):
                     service.install(source, {"username": "new", "password": "new"})
 

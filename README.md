@@ -1,19 +1,14 @@
 # buaa-netlogin
 
-一个轻量、友好的北航校园网自动登录工具。支持现代 Srun challenge 认证、断线重连，以及 Linux systemd 和 macOS launchd 的系统级开机自启动。
+一个轻量的北航校园网自动登录工具。
 
-## 为什么用它
+它支持：
 
-- 只有一个入口：`python main.py`
-- 使用方向键和回车操作的多级中文菜单
-- 不需要记忆安装命令，也不会一次展示大量选项
-- 普通登录时密码只存在于当前进程内存
-- 开机服务凭据仅允许服务身份读取（Linux 为 root，macOS 为所属本地用户）
-- Linux systemd 247+ 使用 credentials 在运行时提供密码
-- macOS 使用系统级 LaunchDaemon，无需登录桌面或解锁用户钥匙串
-- 密码不会进入命令参数、环境变量、service 文件或日志
-- HTTPS 证书校验始终开启
-- 不需要 Docker
+- 手动登录和断线自动重连；
+- Linux systemd 和 macOS launchd 开机自动运行；
+- 通过中文菜单完成配置，不需要记忆复杂命令。
+
+如果程序运行在路由器上，通常一个网络出口运行一个后台服务即可，详见[路由器部署](#路由器部署)。
 
 ## 快速开始
 
@@ -25,19 +20,15 @@ python3 -m venv .venv
 .venv/bin/python main.py
 ```
 
-在正常终端中使用 `↑`、`↓` 选择，按 `Enter` 确认，按 `Esc` 返回。终端不支持方向键菜单时会自动使用编号选择。
+安装开机服务时，如果系统 Python 版本过低，程序会使用当前启动它的新版 Python
+创建独立的服务环境。若安装失败，可检查：
 
-一级菜单保持简洁：
-
-```text
-你好，欢迎使用 BUAA NetLogin 👋
-
-想先做什么？
-❯ 立即联网
-  自动运行
-  设置与帮助
-  退出
+```bash
+.venv/bin/python --version
+/usr/bin/python3 --version
 ```
+
+程序启动后会进入中文菜单；使用方向键和回车选择，按 `Esc` 返回。
 
 ## 开机自动联网
 
@@ -100,6 +91,18 @@ sudo systemctl status buaa-netlogin
 sudo journalctl -u buaa-netlogin -f
 ```
 
+### 路由器部署
+
+如果程序运行在负责拨号或连接校园网的路由器上，通常一个路由器只需要运行一个后台服务，
+路由器下的设备通过它的网络出口共享连接，不需要每台手机、电脑都运行一次。
+
+这里的“一个”指同一个校园网出口只运行一个实例。不要在同一出口的多台设备上同时使用同一组
+账号，否则不同实例可能互相重复登录或触发校园网的设备限制。
+
+这条规则取决于校园网的认证方式：如果路由器工作在路由/NAT 模式，通常由路由器统一认证；
+如果工作在桥接、旁路由或校园网要求每台终端分别认证，则仍需按终端分别登录。程序本身无法
+改变校园网对账号、IP 或 MAC 地址的绑定规则。
+
 ## 账号密码如何保护
 
 一次性登录使用 Python 隐藏输入，密码不会保存。
@@ -141,7 +144,7 @@ macOS 使用上文所述的用户专用 Application Support 凭据目录，遵�
 ```text
 .
 ├── main.py
-├── buaa_netlogin/
+├── netlogin/
 │   ├── client.py       # 现代 Srun 协议
 │   ├── service.py      # 系统级安装、凭据和 systemd 管理
 │   ├── macos_service.py # macOS LaunchDaemon、凭据和日志管理

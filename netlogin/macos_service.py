@@ -160,7 +160,10 @@ def _can_import_requests(python: Path) -> bool:
 def _copy_program(source: Path) -> None:
     print("[1/5] 正在复制程序文件…", flush=True)
     INSTALL_DIR.mkdir(parents=True, exist_ok=True, mode=0o755)
-    shutil.copytree(source / "buaa_netlogin", INSTALL_DIR / "buaa_netlogin", dirs_exist_ok=True,
+    old_package_target = INSTALL_DIR / "buaa_netlogin"
+    if old_package_target.exists():
+        shutil.rmtree(old_package_target)
+    shutil.copytree(source / "netlogin", INSTALL_DIR / "netlogin", dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     for filename in ("main.py", "requirements.txt", "LICENSE", "NOTICE"):
         shutil.copy2(source / filename, INSTALL_DIR / filename)

@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from buaa_netlogin import macos_service
+from netlogin import macos_service
 
 
 class MacOSServiceTests(unittest.TestCase):

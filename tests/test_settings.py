@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from buaa_netlogin import settings
+from netlogin import settings
 
 
 class SettingsTests(unittest.TestCase):

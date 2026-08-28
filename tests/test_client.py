@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from buaa_netlogin.client import SrunClient, SrunError, custom_base64, xencode
+from netlogin.client import SrunClient, SrunError, custom_base64, xencode
 
 
 class ClientTests(unittest.TestCase):

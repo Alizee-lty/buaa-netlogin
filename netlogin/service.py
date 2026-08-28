@@ -81,10 +81,13 @@ def read_runtime_credentials() -> Dict[str, Any]:
 def _copy_program(source: Path) -> None:
     print("[1/5] 正在复制程序文件…", flush=True)
     INSTALL_DIR.mkdir(parents=True, exist_ok=True, mode=0o755)
-    package_target = INSTALL_DIR / "buaa_netlogin"
+    package_target = INSTALL_DIR / "netlogin"
+    old_package_target = INSTALL_DIR / "buaa_netlogin"
+    if old_package_target.exists():
+        shutil.rmtree(old_package_target)
     if package_target.exists():
         shutil.rmtree(package_target)
-    shutil.copytree(source / "buaa_netlogin", package_target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(source / "netlogin", package_target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     for filename in ("main.py", "requirements.txt", "LICENSE", "NOTICE"):
         shutil.copy2(source / filename, INSTALL_DIR / filename)
     _make_root_owned(INSTALL_DIR)
@@ -109,12 +112,33 @@ def _system_python() -> Path:
     if preferred.is_file() and os.access(preferred, os.X_OK) and _python_supported(preferred):
         return preferred
     discovered = shutil.which("python3")
-    if not discovered:
-        raise RuntimeError("没有找到系统 Python 3，请先安装 python3")
-    python = Path(discovered)
-    if not _python_supported(python):
-        raise RuntimeError("需要 Python 3.8 或更高版本，当前系统 Python 版本过低")
-    return python
+    candidates = []
+    if discovered:
+        candidates.append(Path(discovered))
+    # The installer is commonly started from a newer virtual environment while
+    # the distribution Python is too old. Use it to create the service venv.
+    candidates.append(Path(sys.executable))
+    seen = set()
+    for python in candidates:
+        resolved = python.resolve()
+        if resolved in seen or not resolved.is_file() or not os.access(resolved, os.X_OK):
+            continue
+        seen.add(resolved)
+        if _python_supported(resolved):
+            return resolved
+
+    if preferred.is_file():
+        version = _python_version(preferred)
+        detail = "检测到 {}（Python {}）".format(preferred, version)
+    elif discovered:
+        version = _python_version(Path(discovered))
+        detail = "检测到 {}（Python {}）".format(discovered, version)
+    else:
+        detail = "没有找到 python3"
+    raise RuntimeError(
+        "{}，但安装开机服务需要 Python 3.8 或更高版本。"
+        "请先安装新版 Python，或使用新版 Python 的虚拟环境重新启动本程序。".format(detail)
+    )
 
 
 def _python_supported(python: Path) -> bool:
@@ -124,6 +148,15 @@ def _python_supported(python: Path) -> bool:
         stderr=subprocess.DEVNULL,
     )
     return result.returncode == 0
+
+
+def _python_version(python: Path) -> str:
+    try:
+        output = subprocess.check_output([str(python), "--version"], text=True, stderr=subprocess.STDOUT)
+    except (OSError, subprocess.CalledProcessError):
+        return "版本未知"
+    output = output.strip()
+    return output[7:] if output.startswith("Python ") else output or "版本未知"
 
 
 def _can_import_requests(python: Path) -> bool:
@@ -138,7 +171,11 @@ def _can_import_requests(python: Path) -> bool:
 def _ensure_runtime() -> Path:
     system_python = _system_python()
     print("[2/5] 正在检查 Python 和 requests…", flush=True)
-    if _can_import_requests(system_python):
+    using_current_virtualenv = (
+        sys.prefix != sys.base_prefix
+        and system_python.resolve() == Path(sys.executable).resolve()
+    )
+    if _can_import_requests(system_python) and not using_current_virtualenv:
         print("      已找到可用的系统环境，不需要联网下载依赖。", flush=True)
         shutil.rmtree(INSTALL_DIR / ".venv", ignore_errors=True)
         return system_python
@@ -293,7 +330,12 @@ def _restore_optional(path: Path, content: Any, mode: int) -> None:
 
 def _rollback_install(previous_unit: Any, previous_credential: Any, was_enabled: bool, was_active: bool) -> None:
     print("安装没有完成，正在恢复之前的状态…", flush=True)
-    subprocess.run(["systemctl", "disable", "--now", SERVICE_NAME], check=False)
+    subprocess.run(
+        ["systemctl", "disable", "--now", SERVICE_NAME],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     if INSTALL_DIR.exists():
         shutil.rmtree(INSTALL_DIR)
     if BACKUP_DIR.exists():

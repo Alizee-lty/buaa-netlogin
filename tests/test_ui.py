@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from buaa_netlogin import ui
+from netlogin import ui
 
 
 class UiTests(unittest.TestCase):

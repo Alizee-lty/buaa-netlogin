@@ -9,13 +9,13 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
-from buaa_netlogin import SrunClient, SrunError
+from netlogin import SrunClient, SrunError
 if sys.platform == "darwin":
-    from buaa_netlogin import macos_service as service
+    from netlogin import macos_service as service
 else:
-    from buaa_netlogin import service
-from buaa_netlogin.settings import load_settings, save_settings
-from buaa_netlogin.ui import confirm, pause, select
+    from netlogin import service
+from netlogin.settings import load_settings, save_settings
+from netlogin.ui import confirm, pause, select
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -166,7 +166,7 @@ def privileged_install() -> None:
             return
     print("正在安装程序和开机服务，这可能需要一小会儿…")
     service.install(PROJECT_DIR, credentials)
-    print("✓ 安装完成！从下一次开机开始，系统会自动连接校园网。")
+    print("✓ 安装完成！后台服务已立即启动，并已设置为开机自动连接校园网。")
 
 
 def privileged_update_credentials() -> None:
