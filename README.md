@@ -1,187 +1,176 @@
 # buaa-netlogin
-## 简介
-buaa-netlogin 是一个用于北航校园网的自动登录客户端，基于 Srun 认证协议，用 Python3 实现。
 
-实现了登录，检查在线状态，登出当前终端，登出所有终端功能。
+一个轻量的北航校园网自动登录工具。
 
-## 版权和许可
+它支持：
 
-本项目基于原项目 `pySrun4k_BeihangLogin` 修改：
+- 手动登录和断线自动重连；
+- Linux systemd 和 macOS launchd 开机自动运行；
+- 通过中文菜单完成配置，不需要记忆复杂命令。
+
+如果程序运行在路由器上，通常一个网络出口运行一个后台服务即可，详见[路由器部署](#路由器部署)。
+
+## 快速开始
+
+需要 Python 3.8 或更高版本：
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python main.py
+```
+
+安装开机服务时，如果系统 Python 版本过低，程序会使用当前启动它的新版 Python
+创建独立的服务环境。若安装失败，可检查：
+
+```bash
+.venv/bin/python --version
+/usr/bin/python3 --version
+```
+
+程序启动后会进入中文菜单；使用方向键和回车选择，按 `Esc` 返回。
+
+## 开机自动联网
+
+选择：
 
 ```text
-https://github.com/ywz978020607/pySrun4k_BeihangLogin
+自动运行
+  → 安装或更新开机自动联网
 ```
 
-原项目使用 GNU General Public License v3.0。本修改版本继续使用 GPLv3 发布，完整许可见 `LICENSE`，修改说明见 `NOTICE`。
+程序会请求一次 `sudo` 权限，然后由 root 进程隐藏输入校园网账号密码。菜单会自动识别 Linux 或 macOS。
 
-## Docker版-自动监控保持在线
+### Linux（systemd）
 
-Docker 默认运行新版登录脚本 `main_login_modern.py`。脚本会循环检查在线状态，掉线后自动重新登录。
+Linux 会自动完成：
 
-### Docker环境要求
+1. 将运行程序安装到 `/opt/buaa-netlogin`；
+2. 检查系统 Python；仅在缺少依赖时创建独立虚拟环境；
+3. 将凭据写入 root-only 配置目录；
+4. 安装系统级 `buaa-netlogin.service`；
+5. 执行 `systemctl enable --now buaa-netlogin.service`。
 
-- 已安装 Docker
-- 已安装 Docker Compose
-  - 老版本命令通常是 `docker-compose`
-  - 新版本命令可能是 `docker compose`
-- 当前机器需要能访问北航校园网网关 `https://gw.buaa.edu.cn`
+安装过程中会显示五个阶段的进度。安装器会先确认 Python 版本不低于 3.8，并优先检查 `/usr/bin/python3` 是否已经能导入 `requests`；如果可以，就直接使用系统环境，不创建虚拟环境，也不需要联网下载。只有系统缺少 `requests` 时，才会使用系统 Python 和 `--copies` 创建 `/opt/buaa-netlogin/.venv`，并明确提示需要访问 Python 软件源。下载设置了超时和重试次数，失败后会清理不完整环境。更新已有安装时会先保留旧版本；复制、依赖安装或服务启动任一步失败，都会恢复原程序、凭据和服务状态。
 
-### 启动方式
+保存前程序会访问校园网网关进行预检：机器离线时会实际尝试登录，以检查账号密码；机器已经在线时，为避免强制注销中断网络，只验证网关可访问，无法同时确认新密码是否正确。
 
-推荐使用项目自带的 `env.sh`。第一个参数是校园网账号，第二个参数是校园网密码：
+服务属于 `multi-user.target`，因此不需要用户登录，也不依赖桌面密钥环。
+
+### macOS（launchd）
+
+macOS 使用 `/Library/LaunchDaemons/edu.buaa.netlogin.plist` 中的系统级 `LaunchDaemon`。它在系统开机阶段由 launchd 启动，不依赖某个用户登录，也不依赖用户登录钥匙串。程序和凭据位于：
+
+```text
+/Library/Application Support/BUAA NetLogin/                     root:wheel 755
+/Library/Application Support/BUAA NetLogin/config/              当前用户 700
+/Library/Application Support/BUAA NetLogin/config/account.json  当前用户 600
+```
+
+LaunchDaemon 在开机时由系统加载，并以执行安装的本地用户身份运行；不必登录图形桌面。这样不会让 Homebrew 等用户管理的 Python 获得 root 权限。密码与 plist 分开保存，不会进入 plist、命令参数、环境变量或日志。日志位于 `/Library/Logs/BUAA NetLogin/`，可以从菜单持续查看。
+
+这里有意不使用用户 Keychain：用户登录钥匙串通常要到用户登录时才解锁，无法满足“reboot 后无人登录也要联网”。系统级服务必须能在开机时恢复凭据，因此使用仅服务所属用户可读的文件；该用户、root 或已经完全控制本机的攻击者仍能读取它，这是无人值守认证无法消除的安全边界。
+
+macOS 13 及以上会在“系统设置 → 通用 → 登录项”中展示后台项目。安装器会立即加载并检查服务；如果用户后来在系统设置中主动禁用该后台项目，系统会阻止它开机运行，需要重新允许。程序不会尝试绕过这一系统安全开关。
+
+管理功能都在“自动运行”二级菜单中：
+
+- 安装或更新开机自动联网
+- 仅在当前终端自动重连
+- 更新后台账号和密码
+- 查看后台运行状态
+- 查看后台日志
+- 卸载开机自动联网
+
+进入“查看后台日志”后，日志会持续刷新。按 `Ctrl+C` 即可返回菜单，这只会退出日志查看，不会停止后台自动联网服务。
+
+Linux 也可以使用系统命令检查：
 
 ```bash
-cd docker/
-. ./env.sh <username> <password>
-build
-start
+sudo systemctl status buaa-netlogin
+sudo journalctl -u buaa-netlogin -f
 ```
 
-这里的 `build` 和 `start` 是 `env.sh` 里定义的 alias，分别等价于：
+### 路由器部署
+
+如果程序运行在负责拨号或连接校园网的路由器上，通常一个路由器只需要运行一个后台服务，
+路由器下的设备通过它的网络出口共享连接，不需要每台手机、电脑都运行一次。
+
+这里的“一个”指同一个校园网出口只运行一个实例。不要在同一出口的多台设备上同时使用同一组
+账号，否则不同实例可能互相重复登录或触发校园网的设备限制。
+
+这条规则取决于校园网的认证方式：如果路由器工作在路由/NAT 模式，通常由路由器统一认证；
+如果工作在桥接、旁路由或校园网要求每台终端分别认证，则仍需按终端分别登录。程序本身无法
+改变校园网对账号、IP 或 MAC 地址的绑定规则。
+
+## 账号密码如何保护
+
+一次性登录使用 Python 隐藏输入，密码不会保存。
+
+开机无人值守必须在本机保存可恢复的登录凭据。Linux 凭据位于：
+
+```text
+/etc/buaa-netlogin/              root:root 700
+/etc/buaa-netlogin/account.json  root:root 600
+```
+
+安全边界：
+
+- 其他普通用户无法读取；
+- 密码不出现在 systemd unit、环境变量和进程参数中；
+- systemd 247 及以上通过 `LoadCredential=` 将凭据复制到服务的私有运行时目录；
+- 服务以 `DynamicUser` 临时身份运行，并启用文件系统和权限限制；
+- 较旧的 systemd 会由 root 服务直接读取同一个 600 文件，仅用于兼容；
+- root 或已经完全控制本机的攻击者仍然能够读取凭据，这是任何开机无人值守方案都无法消除的边界。
+
+macOS 使用上文所述的用户专用 Application Support 凭据目录，遵循同一安全边界。
+
+卸载时默认同时删除程序、service 和保存的凭据。
+
+## 非交互命令
+
+日常使用建议进入菜单。以下命令适合脚本调用：
 
 ```bash
-docker-compose build
-docker-compose up -d
+.venv/bin/python main.py status
+.venv/bin/python main.py login
+.venv/bin/python main.py watch
 ```
 
-如果 alias 没有生效，可以直接使用完整命令：
+内部 systemd/launchd 安装命令以下划线开头，不属于公共接口。
+
+## 项目结构
+
+```text
+.
+├── main.py
+├── netlogin/
+│   ├── client.py       # 现代 Srun 协议
+│   ├── service.py      # 系统级安装、凭据和 systemd 管理
+│   ├── macos_service.py # macOS LaunchDaemon、凭据和日志管理
+│   ├── settings.py     # 非敏感的用户偏好
+│   └── ui.py           # 方向键多级菜单
+├── tests/
+├── requirements.txt
+├── NOTICE
+└── LICENSE
+```
+
+## 测试
 
 ```bash
-cd docker/
-export user=<username>
-export pwd=<password>
-docker-compose build
-docker-compose up -d
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
-如果你的环境使用新版 Compose 插件，则把 `docker-compose` 换成 `docker compose`：
+离线测试不会连接校园网，也不会读取真实账号密码。
 
-```bash
-cd docker/
-export user=<username>
-export pwd=<password>
-docker compose build
-docker compose up -d
-```
+## 项目来源
 
-### 查看日志和停止
+本项目基于以下 GPL-3.0 项目演进：
 
-脚本日志会写入：
+- [hanbing0715/pySrun4k](https://github.com/hanbing0715/pySrun4k)
+- [xxzl0130/pySrun4k_BeihangLogin](https://github.com/xxzl0130/pySrun4k_BeihangLogin)
+- [IceClear/pySrun4k_BeihangLogin](https://github.com/IceClear/pySrun4k_BeihangLogin)
+- [ywz978020607/pySrun4k_BeihangLogin](https://github.com/ywz978020607/pySrun4k_BeihangLogin)
 
-```bash
-docker/netlogin.log
-```
-
-查看容器日志：
-
-```bash
-cd docker/
-docker-compose logs -f
-```
-
-停止后台服务：
-
-```bash
-cd docker/
-docker-compose down
-```
-
-## 本机运行依赖
-
-如果不使用 Docker，需要本机安装 Python3 和 requests：
-
-```bash
-pip install requests
-```
-
-## 系统后台自启动
-
-如果不想使用 Docker，可以直接把 `main_login_modern.py` 注册为系统后台服务。
-
-### macOS
-
-使用 `launchd` 用户级后台服务：
-
-```bash
-./macos_autostart.sh install <username> '<password>'
-```
-
-默认每 5 秒检查一次在线状态。如果要改成 30 秒：
-
-```bash
-./macos_autostart.sh install <username> '<password>' 30
-```
-
-查看状态：
-
-```bash
-./macos_autostart.sh status
-```
-
-卸载自启动：
-
-```bash
-./macos_autostart.sh uninstall
-```
-
-### Linux
-
-使用 `systemd --user` 用户级后台服务：
-
-```bash
-./linux_autostart.sh install <username> '<password>'
-```
-
-默认每 5 秒检查一次在线状态。如果要改成 30 秒：
-
-```bash
-./linux_autostart.sh install <username> '<password>' 30
-```
-
-查看状态：
-
-```bash
-./linux_autostart.sh status
-```
-
-卸载自启动：
-
-```bash
-./linux_autostart.sh uninstall
-```
-
-如果密码里有 `!`、空格等特殊字符，请用单引号包起来。上面的 `<username>` 和 `<password>` 是占位符，实际执行时不要输入尖括号。最后一个数字参数是检查间隔秒数，必须是正整数。
-
-## API
-
-### 登录
-
-```srun4k.do_login(username,pwd,mbytes=0,minutes=0)```
-
-### 检查在线状态
-
-```srun4k.check_online()```
-
-### 登出当前终端
-
-```srun4k.do_logout(username)```
-
-### 登出所有终端
-
-```srun4k.force_logout(username,password)```
-
-## Login.py
-
-可以直接通过命令行调用
-
-### 登录
-```python Login.py login <username> <password>```
-
-### 检查在线状态
-```python Login.py check_online```
-
-### 登出当前终端
-```python Login.py logout <username>```
-
-### 登出所有终端
-```python Login.py logout_all <username> <password>```
+本修改版本继续使用 [GNU GPL v3](LICENSE)。详细修改说明见 [NOTICE](NOTICE)。
