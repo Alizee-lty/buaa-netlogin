@@ -7,6 +7,10 @@ from netlogin import settings
 
 
 class SettingsTests(unittest.TestCase):
+    def test_missing_home_directory_does_not_break_imported_settings(self):
+        with patch.object(settings.Path, "home", side_effect=RuntimeError("no home")):
+            self.assertIsNone(settings._default_config_dir())
+
     def test_config_never_contains_password(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
