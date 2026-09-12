@@ -48,6 +48,9 @@ class ServiceTests(unittest.TestCase):
             current = Path(directory) / "python3"
             current.touch()
             current.chmod(0o755)
+            # macOS exposes temporary paths through /var, which resolves to
+            # /private/var. Match the normalized paths used by _system_python.
+            current = current.resolve()
             with patch.object(service, "_python_supported", side_effect=lambda path: path == current), patch.object(
                 service, "_python_version", return_value="3.6.15"
             ), patch.object(service.shutil, "which", return_value="/usr/bin/python3"), patch.object(
