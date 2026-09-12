@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import Mock, patch
 
+import requests
+
 from netlogin.client import SrunClient, SrunError, custom_base64, xencode
 
 
@@ -28,6 +30,24 @@ class ClientTests(unittest.TestCase):
         session.get.return_value = self.response("invalid")
         with self.assertRaises(SrunError):
             SrunClient(session=session).status()
+        self.assertEqual(session.get.call_count, 3)
+        self.assertEqual(session.close.call_count, 3)
+
+    def test_status_recovers_from_gateway_backend_failure(self):
+        session = Mock()
+        failed = self.response("Status Internal Server Error")
+        failed.status_code = 500
+        failed.raise_for_status.side_effect = requests.HTTPError()
+        session.get.side_effect = [
+            failed,
+            self.response("user,1,2,3,4,5,6,7,10.0.0.1"),
+        ]
+
+        status = SrunClient(session=session).status()
+
+        self.assertTrue(status.online)
+        self.assertEqual(status.ip, "10.0.0.1")
+        self.assertEqual(session.close.call_count, 1)
 
     def test_encoding_matches_fixed_vectors(self):
         self.assertEqual(custom_base64(xencode("{}", "token")), "gO7SOzvdH7P=")

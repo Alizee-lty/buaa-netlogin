@@ -97,12 +97,17 @@ class SrunClient:
                 verify=self.verify_tls,
                 **kwargs
             )
-            response.raise_for_status()
-            return response
         except requests.RequestException as error:
             # requests exceptions may include a full query string. Login queries
             # contain derived credential material, so never copy the URL to logs.
             raise SrunError("网络请求失败，请检查网络连接和网关设置") from error
+        try:
+            response.raise_for_status()
+        except requests.RequestException as error:
+            # Report only the status code. The response URL may contain derived
+            # credential material for login requests.
+            raise SrunError("网关请求失败（HTTP {}）".format(response.status_code)) from error
+        return response
 
     def _jsonp(self, path: str, params: Dict[str, str]) -> Dict[str, Any]:
         callback = "jQuery{}{}".format(int(time.time() * 1000), random.randint(100, 999))
@@ -118,12 +123,24 @@ class SrunClient:
             raise SrunError("网关返回了无效 JSON") from error
 
     def status(self) -> OnlineStatus:
-        fields = self._get("/cgi-bin/rad_user_info").text.strip().split(",")
-        if not fields or fields[0] == "not_online":
-            return OnlineStatus(False)
-        if len(fields) < 9:
-            raise SrunError("网关在线状态响应格式异常")
-        return OnlineStatus(True, username=fields[0], ip=fields[8])
+        last_error: Optional[SrunError] = None
+        for attempt in range(3):
+            try:
+                fields = self._get("/cgi-bin/rad_user_info").text.strip().split(",")
+                if fields[0] == "not_online":
+                    return OnlineStatus(False)
+                if len(fields) >= 9:
+                    return OnlineStatus(True, username=fields[0], ip=fields[8])
+                last_error = SrunError("网关在线状态响应格式异常")
+            except SrunError as error:
+                last_error = error
+
+            # The gateway can pin a keep-alive connection to an unhealthy
+            # backend. Clearing the pool makes this or the next check choose a
+            # new one, including when all retries in this check are exhausted.
+            self.session.close()
+
+        raise last_error or SrunError("网关在线状态响应格式异常")
 
     def _portal_config(self) -> Tuple[str, str]:
         html = self._get("/srun_portal_pc", params={"ac_id": "1", "theme": "buaa"}).text
