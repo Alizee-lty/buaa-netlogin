@@ -8,8 +8,16 @@ from netlogin import settings
 
 class SettingsTests(unittest.TestCase):
     def test_missing_home_directory_does_not_break_imported_settings(self):
-        with patch.object(settings.Path, "home", side_effect=RuntimeError("no home")):
+        with patch.dict(settings.os.environ, {"XDG_CONFIG_HOME": ""}), patch.object(
+            settings.Path, "home", side_effect=RuntimeError("no home")
+        ):
             self.assertIsNone(settings._default_config_dir())
+
+    def test_xdg_config_home_does_not_require_a_home_directory(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            settings.os.environ, {"XDG_CONFIG_HOME": directory}
+        ), patch.object(settings.Path, "home", side_effect=RuntimeError("no home")):
+            self.assertEqual(settings._default_config_dir(), Path(directory) / "buaa-netlogin")
 
     def test_config_never_contains_password(self):
         with tempfile.TemporaryDirectory() as directory:
