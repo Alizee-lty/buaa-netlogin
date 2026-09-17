@@ -371,6 +371,12 @@ def interactive_menu() -> int:
 
 
 def main() -> int:
+    if sys.platform == "win32":
+        # English Windows runners may use cp1252, which cannot print the
+        # Chinese menu or even argparse's help text.
+        for stream in (sys.stdout, sys.stderr):
+            if stream is not None and hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="北航校园网轻量登录工具；不带参数进入交互界面")
     parser.add_argument("command", nargs="?", metavar="{status,login,watch}")
     args = parser.parse_args()
