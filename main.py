@@ -2,6 +2,7 @@
 """Friendly single entry point for interactive use and systemd."""
 
 import argparse
+import ctypes
 import getpass
 import subprocess
 import sys
@@ -385,6 +386,10 @@ def main() -> int:
         elif args.command == "watch":
             foreground_watch(settings)
         elif args.command == "_watch":
+            if sys.platform == "win32" and getattr(sys, "frozen", False):
+                # The bundled console executable stays interactive for the
+                # menu, but detaches its window when started as a background task.
+                ctypes.windll.kernel32.FreeConsole()
             runtime_watch()
         elif args.command == "_system-install":
             privileged_install()
@@ -396,6 +401,12 @@ def main() -> int:
             parser.error("不认识这个命令：{}".format(args.command))
         return 0
     except (SrunError, RuntimeError, ValueError, OSError, subprocess.SubprocessError) as error:
+        if sys.platform == "win32" and args.command == "_watch":
+            try:
+                service.log_line("自动联网未能启动，请在菜单中检查或重新设置凭据。")
+            except OSError:
+                pass
+            return 2
         print("操作没有完成：{}".format(error), file=sys.stderr)
         return 2
     except KeyboardInterrupt:

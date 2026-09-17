@@ -32,7 +32,7 @@ python3 -m venv .venv
 
 ### Windows 快速开始
 
-安装 Python 3.8 或更新版本后，在项目目录运行 `py -3 -m pip install -r requirements.txt`。随后双击 `start-windows.cmd`，或运行 `py -3 main.py`。选择“设置自动联网”即可为当前用户配置登录 Windows 后自动重连，无需管理员权限。源码版计划任务指向当前目录和 Python 的绝对路径，请勿随意移动或卸载它们。
+最简单的方式是在 GitHub Actions 成功运行的 `BUAA-NetLogin-Windows-x64` 构建产物中下载 EXE 并双击运行；正式 Release 仍需单独发布。也可安装 Python 3.8 或更新版本，在项目目录运行 `py -3 -m pip install -r requirements.txt`，然后双击 `start-windows.cmd`。选择“设置自动联网”即可为当前用户配置登录 Windows 后自动重连，无需管理员权限。源码版计划任务指向当前目录和 Python 的绝对路径，请勿随意移动或卸载它们。
 
 ## 开机自动联网
 
