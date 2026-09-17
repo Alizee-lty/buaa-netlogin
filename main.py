@@ -122,7 +122,10 @@ def runtime_watch() -> None:
                 client.login(username, password)
                 report("{} 网络已重新连接。".format(time.strftime("%F %T")))
         except SrunError as error:
-            report("{} 连接暂时失败：{}".format(time.strftime("%F %T"), error), error=True)
+            if sys.platform == "win32":
+                report("{} 连接暂时失败，稍后重试。".format(time.strftime("%F %T")), error=True)
+            else:
+                report("{} 连接暂时失败：{}".format(time.strftime("%F %T"), error), error=True)
         time.sleep(interval)
 
 

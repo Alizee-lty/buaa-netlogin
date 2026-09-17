@@ -1,5 +1,7 @@
 import tempfile
 import sys
+import subprocess
+import uuid
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -32,6 +34,20 @@ class WindowsServiceTests(unittest.TestCase):
         encrypted = service._dpapi(b"test-secret")
         self.assertNotIn(b"test-secret", encrypted)
         self.assertEqual(service._dpapi(encrypted, decrypt=True), b"test-secret")
+
+    @unittest.skipUnless(sys.platform == "win32", "requires Windows")
+    def test_windows_accepts_task_definition(self):
+        name = "BUAA NetLogin CI " + uuid.uuid4().hex
+        with tempfile.TemporaryDirectory() as directory:
+            task_file = Path(directory) / "task.xml"
+            task_file.write_bytes(service._task_xml(Path(directory)))
+            try:
+                created = subprocess.run(["schtasks", "/create", "/xml", str(task_file),
+                                          "/tn", name, "/f"], capture_output=True, text=True)
+                self.assertEqual(created.returncode, 0, created.stderr)
+            finally:
+                subprocess.run(["schtasks", "/delete", "/tn", name, "/f"],
+                               capture_output=True, text=True)
 
     def test_install_restores_old_credential_if_task_creation_fails(self):
         with tempfile.TemporaryDirectory() as directory:
