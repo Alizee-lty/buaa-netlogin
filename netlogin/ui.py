@@ -51,7 +51,7 @@ def select(title: str, options: Sequence[Option], hint: str = "↑↓ 选择 · 
     """Return an option value, or None when the user goes back."""
     if not options:
         return None
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+    if sys.platform == "win32" or not (sys.stdin.isatty() and sys.stdout.isatty()):
         return _fallback_select(title, options)
 
     selected = 0

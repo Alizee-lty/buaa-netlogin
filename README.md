@@ -5,7 +5,7 @@
 它支持：
 
 - 手动登录和断线自动重连；
-- Linux systemd 和 macOS launchd 开机自动运行；
+- Linux systemd、macOS launchd 开机自动运行，Windows 用户登录后自动运行；
 - 通过中文菜单完成配置，不需要记忆复杂命令。
 
 如果程序运行在路由器上，通常一个网络出口运行一个后台服务即可，详见[路由器部署](#路由器部署)。
@@ -28,18 +28,22 @@ python3 -m venv .venv
 /usr/bin/python3 --version
 ```
 
-程序启动后会进入中文菜单；使用方向键和回车选择，按 `Esc` 返回。
+程序启动后会进入中文菜单；首页可直接“一键登录”或“查看联网状态”。Linux/macOS 使用方向键，Windows 输入菜单序号。
+
+### Windows 快速开始
+
+安装 Python 3.8 或更新版本后，在项目目录运行 `py -3 -m pip install -r requirements.txt`。随后双击 `start-windows.cmd`，或运行 `py -3 main.py`。选择“设置自动联网”即可为当前用户配置登录 Windows 后自动重连，无需管理员权限。源码版计划任务指向当前目录和 Python 的绝对路径，请勿随意移动或卸载它们。
 
 ## 开机自动联网
 
 选择：
 
 ```text
-自动运行
+设置自动联网
   → 安装或更新开机自动联网
 ```
 
-程序会请求一次 `sudo` 权限，然后由 root 进程隐藏输入校园网账号密码。菜单会自动识别 Linux 或 macOS。
+Linux/macOS 会请求一次 `sudo` 权限；Windows 只创建当前用户的计划任务，无需提权。
 
 ### Linux（systemd）
 
@@ -72,6 +76,12 @@ LaunchDaemon 在开机时由系统加载，并以执行安装的本地用户身�
 这里有意不使用用户 Keychain：用户登录钥匙串通常要到用户登录时才解锁，无法满足“reboot 后无人登录也要联网”。系统级服务必须能在开机时恢复凭据，因此使用仅服务所属用户可读的文件；该用户、root 或已经完全控制本机的攻击者仍能读取它，这是无人值守认证无法消除的安全边界。
 
 macOS 13 及以上会在“系统设置 → 通用 → 登录项”中展示后台项目。安装器会立即加载并检查服务；如果用户后来在系统设置中主动禁用该后台项目，系统会阻止它开机运行，需要重新允许。程序不会尝试绕过这一系统安全开关。
+
+### Windows（计划任务）
+
+Windows 创建只在**当前用户登录后**运行的计划任务，不会在无人登录时运行。任务仅包含 Python/程序路径及 `_watch` 参数，不含校园网账号密码。凭据使用当前用户范围的 Windows DPAPI 加密，密文保存在 `%LOCALAPPDATA%\BUAA NetLogin\account.dat`；运行日志在同目录的 `netlogin.log`。同一 Windows 用户、管理员或完全控制本机的程序仍可能读取凭据，DPAPI 不隔离同用户进程。
+
+安装后任务会立即启动，后续每次登录时重新启动，并禁用任务计划程序默认的 72 小时运行上限。卸载会删除任务、凭据密文和日志。不要向别人发送自己的 `account.dat`。
 
 管理功能都在“自动运行”二级菜单中：
 
@@ -144,10 +154,12 @@ macOS 使用上文所述的用户专用 Application Support 凭据目录，遵�
 ```text
 .
 ├── main.py
+├── start-windows.cmd # Windows 双击入口
 ├── netlogin/
 │   ├── client.py       # 现代 Srun 协议
 │   ├── service.py      # 系统级安装、凭据和 systemd 管理
 │   ├── macos_service.py # macOS LaunchDaemon、凭据和日志管理
+│   ├── windows_service.py # Windows 计划任务和 DPAPI 凭据
 │   ├── settings.py     # 非敏感的用户偏好
 │   └── ui.py           # 方向键多级菜单
 ├── tests/

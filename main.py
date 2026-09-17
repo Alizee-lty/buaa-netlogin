@@ -12,6 +12,8 @@ from typing import Any, Dict, Tuple
 from netlogin import SrunClient, SrunError
 if sys.platform == "darwin":
     from netlogin import macos_service as service
+elif sys.platform == "win32":
+    from netlogin import windows_service as service
 else:
     from netlogin import service
 from netlogin.settings import load_settings, save_settings
@@ -107,19 +109,28 @@ def runtime_watch() -> None:
     )
     username = str(credentials["username"])
     password = str(credentials["password"])
-    print("校园网自动守护已启动，检查间隔 {} 秒。".format(interval), flush=True)
+    def report(message: str, error: bool = False) -> None:
+        if sys.platform == "win32":
+            service.log_line(message)
+        else:
+            print(message, file=sys.stderr if error else sys.stdout, flush=True)
+
+    report("校园网自动守护已启动，检查间隔 {} 秒。".format(interval))
     while True:
         try:
             if not client.status().online:
                 client.login(username, password)
-                print("{} 网络已重新连接。".format(time.strftime("%F %T")), flush=True)
+                report("{} 网络已重新连接。".format(time.strftime("%F %T")))
         except SrunError as error:
-            print("{} 连接暂时失败：{}".format(time.strftime("%F %T"), error), file=sys.stderr, flush=True)
+            report("{} 连接暂时失败：{}".format(time.strftime("%F %T"), error), error=True)
         time.sleep(interval)
 
 
 def ask_service_credentials() -> Dict[str, Any]:
-    print("\n接下来配置开机自动联网。账号密码只会写入 root 专用凭据文件。")
+    if sys.platform == "win32":
+        print("\n接下来配置登录 Windows 后自动联网。密码将由当前 Windows 用户的 DPAPI 保护。")
+    else:
+        print("\n接下来配置开机自动联网。账号密码只会写入受限凭据文件。")
     username = input("校园网账号：").strip()
     password = getpass.getpass("校园网密码（输入内容不会显示）：")
     if not username or not password:
@@ -154,7 +165,7 @@ def verify_service_credentials(credentials: Dict[str, Any]) -> None:
 
 
 def privileged_install() -> None:
-    if not service.is_root():
+    if sys.platform != "win32" and not service.is_root():
         raise RuntimeError("需要 root 权限")
     credentials = ask_service_credentials()
     try:
@@ -166,11 +177,14 @@ def privileged_install() -> None:
             return
     print("正在安装程序和开机服务，这可能需要一小会儿…")
     service.install(PROJECT_DIR, credentials)
-    print("✓ 安装完成！后台服务已立即启动，并已设置为开机自动连接校园网。")
+    if sys.platform == "win32":
+        print("✓ 设置完成！当前用户登录 Windows 后会自动连接校园网。")
+    else:
+        print("✓ 安装完成！后台服务已立即启动，并已设置为开机自动连接校园网。")
 
 
 def privileged_update_credentials() -> None:
-    if not service.is_root():
+    if sys.platform != "win32" and not service.is_root():
         raise RuntimeError("需要 root 权限")
     credentials = ask_service_credentials()
     try:
@@ -185,10 +199,10 @@ def privileged_update_credentials() -> None:
 
 
 def privileged_uninstall() -> None:
-    if not service.is_root():
+    if sys.platform != "win32" and not service.is_root():
         raise RuntimeError("需要 root 权限")
     service.uninstall(remove_data=True)
-    print("✓ 后台服务、安装文件和保存的登录信息都已删除。")
+    print("✓ 自动运行任务及保存的登录信息已删除。")
 
 
 def edit_preferences(settings: Dict[str, Any]) -> None:
@@ -238,22 +252,31 @@ def service_menu(settings: Dict[str, Any]) -> None:
             if choice == "foreground":
                 foreground_watch(settings)
             elif choice == "install":
-                if sys.platform == "darwin":
+                if sys.platform == "win32":
+                    print("\n将创建当前用户登录时运行的计划任务；无需管理员权限。")
+                    print("请保留程序所在位置，密码不会写入任务命令行。")
+                elif sys.platform == "darwin":
                     print("\n程序将安装到系统 Application Support，并创建系统级 LaunchDaemon。")
                     print("登录信息只允许当前本地用户读取，不需要登录桌面或解锁钥匙串。")
                 else:
                     print("\n程序将安装到 /opt/buaa-netlogin，并创建系统级开机服务。")
                     print("登录信息会保存在仅 root 可读的 /etc/buaa-netlogin 中。")
                 if confirm("准备好后继续吗？", default=True):
-                    print("接下来系统会请求一次 sudo 权限。")
-                    service.run_as_root("_system-install")
+                    if sys.platform == "win32":
+                        privileged_install()
+                    else:
+                        print("接下来系统会请求一次 sudo 权限。")
+                        service.run_as_root("_system-install")
                 else:
                     print("好的，没有改动系统。")
             elif choice == "credentials":
                 if not service.installed():
                     print("开机自动联网还没有安装，请先选择“安装开机自动联网”。")
                 elif confirm("要更新后台使用的账号、密码和检查间隔吗？"):
-                    service.run_as_root("_system-update-credentials")
+                    if sys.platform == "win32":
+                        privileged_update_credentials()
+                    else:
+                        service.run_as_root("_system-update-credentials")
                 else:
                     print("登录信息保持不变。")
             elif choice == "status":
@@ -272,7 +295,10 @@ def service_menu(settings: Dict[str, Any]) -> None:
                 if not service.installed():
                     print("没有发现已安装的开机自动联网，不需要卸载。")
                 elif confirm("确定卸载，并删除保存的后台登录信息吗？"):
-                    service.run_as_root("_system-uninstall")
+                    if sys.platform == "win32":
+                        privileged_uninstall()
+                    else:
+                        service.run_as_root("_system-uninstall")
                 else:
                     print("没有改动任何东西。")
         except KeyboardInterrupt:
@@ -297,7 +323,10 @@ def help_menu(settings: Dict[str, Any]) -> None:
             if choice == "preferences":
                 edit_preferences(settings)
             elif choice == "security":
-                if sys.platform == "darwin":
+                if sys.platform == "win32":
+                    print("\nWindows 自动登录凭据由当前用户的 DPAPI 保护，不存入命令行或计划任务。")
+                    print("同一用户或已完全控制本机的程序仍可能读取凭据；注销用户后自动任务不会运行。")
+                elif sys.platform == "darwin":
                     print("\n一次性登录不会保存密码。LaunchDaemon 凭据位于系统 Application Support，")
                     print("目录权限为 700、文件权限为 600，仅服务所属用户可读；密码不进入 plist、参数、环境变量或日志。")
                 else:
@@ -314,18 +343,27 @@ def help_menu(settings: Dict[str, Any]) -> None:
 def interactive_menu() -> int:
     settings = load_settings()
     print("\n你好，欢迎使用 BUAA NetLogin 👋")
-    print("这里可以帮你连接校园网，也可以设置开机自动联网。")
+    print("这里可以帮你立即联网，也可以设置自动联网。")
     while True:
         choice = select("想先做什么？", [
-            ("network", "立即联网"),
-            ("service", "自动运行"),
+            ("login", "一键登录"),
+            ("status", "查看联网状态"),
+            ("service", "设置自动联网"),
+            ("network", "更多网络操作"),
             ("help", "设置与帮助"),
             ("exit", "退出"),
         ])
         if choice in (None, "exit"):
             print("再见，祝你网络顺畅！")
             return 0
-        {"network": network_menu, "service": service_menu, "help": help_menu}[choice](settings)
+        if choice in {"login", "status"}:
+            try:
+                {"login": login_once, "status": show_status}[choice](settings)
+            except (SrunError, RuntimeError, ValueError, OSError) as error:
+                print("这次没有完成：{}".format(error))
+            pause()
+        else:
+            {"network": network_menu, "service": service_menu, "help": help_menu}[choice](settings)
 
 
 def main() -> int:
