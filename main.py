@@ -287,14 +287,18 @@ def service_menu(settings: Dict[str, Any]) -> None:
                 service.status()
             elif choice == "logs":
                 print("\n" + "=" * 58)
-                print("正在持续显示后台日志")
-                print("需要退出时，请按 Ctrl+C（不会停止后台服务）")
+                if sys.platform == "win32":
+                    print("显示最近 80 条自动联网日志")
+                else:
+                    print("正在持续显示后台日志")
+                    print("需要退出时，请按 Ctrl+C（不会停止后台服务）")
                 print("=" * 58 + "\n")
                 try:
                     service.logs()
                 except KeyboardInterrupt:
                     pass
-                print("\n✓ 已退出日志查看，后台自动联网仍在运行。")
+                if sys.platform != "win32":
+                    print("\n✓ 已退出日志查看，后台自动联网仍在运行。")
             elif choice == "uninstall":
                 if not service.installed():
                     print("没有发现已安装的开机自动联网，不需要卸载。")
