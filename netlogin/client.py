@@ -12,6 +12,7 @@ import requests
 
 
 CUSTOM_BASE64 = "LVoJPiCN2R8G90yg+hmFHuacZ1OWMnrsSTXkYpUq/3dlbfKwv6xztjI7DeBE45QA"
+OFFLINE_STATUS_VALUES = {"not_online", "not_online_error"}
 
 
 class SrunError(RuntimeError):
@@ -127,7 +128,7 @@ class SrunClient:
         for attempt in range(3):
             try:
                 fields = self._get("/cgi-bin/rad_user_info").text.strip().split(",")
-                if fields[0] == "not_online":
+                if fields[0] in OFFLINE_STATUS_VALUES:
                     return OnlineStatus(False)
                 if len(fields) >= 9:
                     return OnlineStatus(True, username=fields[0], ip=fields[8])

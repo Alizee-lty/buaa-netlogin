@@ -17,6 +17,12 @@ class ClientTests(unittest.TestCase):
         session.get.return_value = self.response("not_online")
         self.assertFalse(SrunClient(session=session).status().online)
 
+    def test_offline_error_status_is_also_offline(self):
+        session = Mock()
+        session.get.return_value = self.response("not_online_error")
+        self.assertFalse(SrunClient(session=session).status().online)
+        self.assertEqual(session.get.call_count, 1)
+
     def test_online_status(self):
         session = Mock()
         session.get.return_value = self.response("user,1,2,3,4,5,6,7,10.0.0.1")
