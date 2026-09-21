@@ -21,6 +21,11 @@ class ServiceTests(unittest.TestCase):
         self.assertNotIn("LoadCredential=", unit)
         self.assertNotIn("password", unit.lower())
 
+    def test_frozen_unit_runs_standalone_executable(self):
+        unit = build_unit(Path("/opt/buaa-netlogin/BUAA-NetLogin"), 249, frozen=True)
+        self.assertIn("ExecStart=/opt/buaa-netlogin/BUAA-NetLogin _watch", unit)
+        self.assertNotIn("main.py", unit)
+
     def test_credential_file_is_root_only_mode(self):
         with tempfile.TemporaryDirectory() as directory:
             config_dir = Path(directory) / "config"

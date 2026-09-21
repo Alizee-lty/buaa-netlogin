@@ -10,7 +10,27 @@
 
 如果程序运行在路由器上，通常一个网络出口运行一个后台服务即可，详见[路由器部署](#路由器部署)。
 
-## 快速开始
+## 下载独立程序（推荐）
+
+从 [GitHub Releases](https://github.com/Alizee-lty/buaa-netlogin/releases/latest) 下载对应系统的文件，
+不需要安装 Python，也不需要下载依赖：
+
+- Windows x64：下载 `BUAA-NetLogin-windows-x86_64.exe`，双击运行；
+- Linux：下载名称与本机架构一致的 `BUAA-NetLogin-linux-*`，赋予执行权限后运行；
+- macOS：下载名称与本机架构一致的 `BUAA-NetLogin-macos-*`，赋予执行权限后运行。
+
+Linux/macOS 首次运行：
+
+```bash
+chmod +x ./BUAA-NetLogin-*
+./BUAA-NetLogin-*
+```
+
+Release 同时提供保留可执行权限的 `.tar.gz`，以及用于校验下载内容的 `SHA256SUMS.txt`。
+macOS 构建目前没有 Apple Developer 签名；若系统拦截，请在“系统设置 → 隐私与安全性”中确认
+文件确实来自本项目后选择允许。不要从第三方来源下载或绕过来源检查。
+
+## 从源码运行
 
 需要 Python 3.8 或更高版本：
 
@@ -30,9 +50,9 @@ python3 -m venv .venv
 
 程序启动后会进入中文菜单；首页可直接“一键登录”或“查看联网状态”。Linux/macOS 使用方向键，Windows 输入菜单序号。
 
-### Windows 快速开始
+### Windows 源码运行
 
-最简单的方式是在 GitHub Actions 成功运行的 `BUAA-NetLogin-Windows-x64` 构建产物中下载 EXE 并双击运行；正式 Release 仍需单独发布。也可安装 Python 3.8 或更新版本，在项目目录运行 `py -3 -m pip install -r requirements.txt`，然后双击 `start-windows.cmd`。选择“设置自动联网”即可为当前用户配置登录 Windows 后自动重连，无需管理员权限。源码版计划任务指向当前目录和 Python 的绝对路径，请勿随意移动或卸载它们。
+也可安装 Python 3.8 或更新版本，在项目目录运行 `py -3 -m pip install -r requirements.txt`，然后双击 `start-windows.cmd`。选择“设置自动联网”即可为当前用户配置登录 Windows 后自动重连，无需管理员权限。源码版计划任务指向当前目录和 Python 的绝对路径，请勿随意移动或卸载它们。
 
 ## 开机自动联网
 
@@ -47,15 +67,15 @@ Linux/macOS 会请求一次 `sudo` 权限；Windows 只创建当前用户的计�
 
 ### Linux（systemd）
 
-Linux 会自动完成：
+使用 Release 独立程序时，Linux 会自动完成：
 
 1. 将运行程序安装到 `/opt/buaa-netlogin`；
-2. 检查系统 Python；仅在缺少依赖时创建独立虚拟环境；
+2. 将独立程序安装为后台运行文件，不检查或安装 Python；
 3. 将凭据写入 root-only 配置目录；
 4. 安装系统级 `buaa-netlogin.service`；
 5. 执行 `systemctl enable --now buaa-netlogin.service`。
 
-安装过程中会显示五个阶段的进度。安装器会先确认 Python 版本不低于 3.8，并优先检查 `/usr/bin/python3` 是否已经能导入 `requests`；如果可以，就直接使用系统环境，不创建虚拟环境，也不需要联网下载。只有系统缺少 `requests` 时，才会使用系统 Python 和 `--copies` 创建 `/opt/buaa-netlogin/.venv`，并明确提示需要访问 Python 软件源。下载设置了超时和重试次数，失败后会清理不完整环境。更新已有安装时会先保留旧版本；复制、依赖安装或服务启动任一步失败，都会恢复原程序、凭据和服务状态。
+安装过程中会显示五个阶段的进度。独立程序已包含所需运行环境，后台服务不会联网下载软件包。若从源码运行，安装器仍会检查 Python 和 `requests`，并在需要时创建独立虚拟环境。更新已有安装时会先保留旧版本；复制、依赖安装或服务启动任一步失败，都会恢复原程序、凭据和服务状态。
 
 保存前程序会访问校园网网关进行预检：机器离线时会实际尝试登录，以检查账号密码；机器已经在线时，为避免强制注销中断网络，只验证网关可访问，无法同时确认新密码是否正确。
 
@@ -63,7 +83,7 @@ Linux 会自动完成：
 
 ### macOS（launchd）
 
-macOS 使用 `/Library/LaunchDaemons/edu.buaa.netlogin.plist` 中的系统级 `LaunchDaemon`。它在系统开机阶段由 launchd 启动，不依赖某个用户登录，也不依赖用户登录钥匙串。程序和凭据位于：
+macOS 使用 `/Library/LaunchDaemons/edu.buaa.netlogin.plist` 中的系统级 `LaunchDaemon`。Release 独立程序安装后台服务后同样不依赖 Python。它在系统开机阶段由 launchd 启动，不依赖某个用户登录，也不依赖用户登录钥匙串。程序和凭据位于：
 
 ```text
 /Library/Application Support/BUAA NetLogin/                     root:wheel 755

@@ -46,7 +46,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_ui.py -v
       - run: python -m compileall -q main.py netlogin tests
       - run: python -m pip install "pyinstaller>=6,<7"
-      - run: python -m PyInstaller --onefile --name BUAA-NetLogin main.py
+      - run: python -m PyInstaller --onefile --exclude-module setuptools --exclude-module pkg_resources --name BUAA-NetLogin main.py
       - name: Smoke-test bundled executable
         shell: pwsh
         run: |

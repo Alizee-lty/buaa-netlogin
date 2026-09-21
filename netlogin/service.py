@@ -16,6 +16,11 @@ BACKUP_DIR = Path("/opt/buaa-netlogin.previous")
 CONFIG_DIR = Path("/etc/buaa-netlogin")
 CREDENTIAL_PATH = CONFIG_DIR / "account.json"
 UNIT_PATH = Path("/etc/systemd/system") / SERVICE_NAME
+INSTALLED_EXECUTABLE = INSTALL_DIR / "BUAA-NetLogin"
+
+
+def _is_frozen() -> bool:
+    return bool(getattr(sys, "frozen", False))
 
 
 def systemd_available() -> bool:
@@ -53,13 +58,14 @@ def is_root() -> bool:
 def run_as_root(action: str) -> int:
     if not systemd_available():
         raise RuntimeError("开机自动联网目前需要使用 systemd 的 Linux")
-    if is_root():
-        command = [sys.executable, str(Path(__file__).resolve().parents[1] / "main.py"), action]
-    else:
+    command = [sys.executable, action] if _is_frozen() else [
+        sys.executable, str(Path(__file__).resolve().parents[1] / "main.py"), action
+    ]
+    if not is_root():
         sudo = shutil.which("sudo")
         if not sudo:
             raise RuntimeError("没有找到 sudo，请安装 sudo 或使用 root 运行本程序")
-        command = [sudo, sys.executable, str(Path(__file__).resolve().parents[1] / "main.py"), action]
+        command.insert(0, sudo)
     result = subprocess.run(command)
     if result.returncode:
         raise RuntimeError("需要管理员权限的操作没有完成")
@@ -81,6 +87,11 @@ def read_runtime_credentials() -> Dict[str, Any]:
 def _copy_program(source: Path) -> None:
     print("[1/5] 正在复制程序文件…", flush=True)
     INSTALL_DIR.mkdir(parents=True, exist_ok=True, mode=0o755)
+    if _is_frozen():
+        shutil.copy2(sys.executable, INSTALLED_EXECUTABLE)
+        INSTALLED_EXECUTABLE.chmod(0o755)
+        _make_root_owned(INSTALL_DIR)
+        return
     package_target = INSTALL_DIR / "netlogin"
     old_package_target = INSTALL_DIR / "buaa_netlogin"
     if old_package_target.exists():
@@ -171,6 +182,9 @@ def _can_import_requests(python: Path) -> bool:
 
 
 def _ensure_runtime() -> Path:
+    if _is_frozen():
+        print("[2/5] 独立程序已包含运行环境，无需安装 Python 或下载依赖。", flush=True)
+        return INSTALLED_EXECUTABLE
     system_python = _system_python()
     print("[2/5] 正在检查 Python 和 requests…", flush=True)
     using_current_virtualenv = (
@@ -249,7 +263,7 @@ def _systemd_version() -> int:
         return 0
 
 
-def build_unit(python: Path, systemd_version: int) -> str:
+def build_unit(runtime: Path, systemd_version: int, frozen: bool = False) -> str:
     credential_directive = "LoadCredential=account:{}".format(CREDENTIAL_PATH)
     identity = "DynamicUser=yes"
     credential_environment = ""
@@ -267,7 +281,7 @@ Wants=network-online.target
 Type=simple
 {credential}
 {credential_environment}
-ExecStart={python} {main} _watch
+ExecStart={command} _watch
 WorkingDirectory={install_dir}
 Restart=always
 RestartSec=10
@@ -282,14 +296,13 @@ WantedBy=multi-user.target
 """.format(
         credential=credential_directive,
         credential_environment=credential_environment,
-        python=python,
-        main=INSTALL_DIR / "main.py",
+        command=str(runtime) if frozen else "{} {}".format(runtime, INSTALL_DIR / "main.py"),
         install_dir=INSTALL_DIR,
         identity=identity,
     )
-def _write_unit(python: Path) -> None:
+def _write_unit(runtime: Path) -> None:
     print("[4/5] 正在配置 systemd 开机服务…", flush=True)
-    UNIT_PATH.write_text(build_unit(python, _systemd_version()), encoding="utf-8")
+    UNIT_PATH.write_text(build_unit(runtime, _systemd_version(), frozen=_is_frozen()), encoding="utf-8")
     UNIT_PATH.chmod(0o644)
 
 
@@ -360,8 +373,10 @@ def _rollback_install(previous_unit: Any, previous_credential: Any, was_enabled:
 def install(source: Path, credentials: Dict[str, Any]) -> None:
     if not is_root():
         raise RuntimeError("安装系统服务需要 root 权限")
-    if source.resolve() == INSTALL_DIR.resolve():
-        raise RuntimeError("请从源码仓库运行更新，不要直接在 /opt/buaa-netlogin 中更新")
+    if source.resolve() == INSTALL_DIR.resolve() or (
+        _is_frozen() and Path(sys.executable).resolve() == INSTALLED_EXECUTABLE.resolve()
+    ):
+        raise RuntimeError("请运行新下载的程序更新，不要直接运行已安装目录中的程序")
     previous_unit = _read_optional(UNIT_PATH)
     previous_credential = _read_optional(CREDENTIAL_PATH)
     was_enabled = enabled()

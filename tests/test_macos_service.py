@@ -34,6 +34,12 @@ class MacOSServiceTests(unittest.TestCase):
             self.assertEqual(credential.stat().st_mode & 0o777, 0o600)
             self.assertEqual(chown.call_count, 2)
 
+    def test_frozen_plist_runs_standalone_executable(self):
+        executable = Path("/Library/Application Support/BUAA NetLogin/BUAA-NetLogin")
+        plist = macos_service.build_plist(executable, "alice", frozen=True)
+        self.assertEqual(plist["ProgramArguments"], [str(executable), "_watch"])
+        self.assertNotIn("main.py", plist["ProgramArguments"])
+
 
 if __name__ == "__main__":
     unittest.main()
