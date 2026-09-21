@@ -64,10 +64,7 @@ jobs:
           if-no-files-found: error
 
   build-macos:
-    strategy:
-      matrix:
-        os: [macos-26, macos-26-intel]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -85,7 +82,7 @@ jobs:
           tar -C release-assets -czf "release-assets/BUAA-NetLogin-macos-${arch}.tar.gz" "BUAA-NetLogin-macos-${arch}"
       - uses: actions/upload-artifact@v7
         with:
-          name: release-macos-${{ matrix.os }}
+          name: release-macos
           path: release-assets/
           if-no-files-found: error
 

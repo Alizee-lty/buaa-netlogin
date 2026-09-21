@@ -17,7 +17,7 @@
 
 - Windows x64：下载 `BUAA-NetLogin-windows-x86_64.exe`，双击运行；
 - Linux：下载名称与本机架构一致的 `BUAA-NetLogin-linux-*`，赋予执行权限后运行；
-- macOS：下载名称与本机架构一致的 `BUAA-NetLogin-macos-*`，赋予执行权限后运行。
+- macOS Apple Silicon：下载 `BUAA-NetLogin-macos-arm64`，赋予执行权限后运行；Intel Mac 暂时请从源码运行。
 
 Linux/macOS 首次运行：
 
