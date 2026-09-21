@@ -30,13 +30,13 @@ def _read_key() -> str:
         termios.tcsetattr(descriptor, termios.TCSADRAIN, previous)
 
 
-def _fallback_select(title: str, options: Sequence[Option]) -> Optional[str]:
+def _fallback_select(title: str, options: Sequence[Option], empty_action: str = "返回") -> Optional[str]:
     print("\n{}".format(title))
     for index, (_, label) in enumerate(options, 1):
         print("  {}. {}".format(index, label))
     while True:
         try:
-            answer = input("请输入序号（直接回车返回）: ").strip()
+            answer = input("请输入序号（直接回车{}）: ".format(empty_action)).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return None
@@ -47,12 +47,17 @@ def _fallback_select(title: str, options: Sequence[Option]) -> Optional[str]:
         print("没有这个选项，请再试一次。")
 
 
-def select(title: str, options: Sequence[Option], hint: str = "↑↓ 选择 · Enter 确认 · Esc/Ctrl+C 返回") -> Optional[str]:
+def select(
+    title: str,
+    options: Sequence[Option],
+    hint: str = "↑↓ 选择 · Enter 确认 · Esc/Ctrl+C 返回",
+    empty_action: str = "返回",
+) -> Optional[str]:
     """Return an option value, or None when the user goes back."""
     if not options:
         return None
     if sys.platform == "win32" or not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return _fallback_select(title, options)
+        return _fallback_select(title, options, empty_action)
 
     selected = 0
     lines = len(options) + 2

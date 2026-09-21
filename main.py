@@ -2,7 +2,6 @@
 """Friendly single entry point for interactive use and systemd."""
 
 import argparse
-import ctypes
 import getpass
 import subprocess
 import sys
@@ -161,8 +160,8 @@ def verify_service_credentials(credentials: Dict[str, Any]) -> None:
     )
     status = client.status()
     if status.online:
-        print("✓ 网关可以访问，当前机器已经在线。")
-        print("  为避免中断现有网络，本次不会强制注销测试密码。")
+        print("✓ 网关响应正常，当前机器已经在线。")
+        print("  为避免断开现有连接，程序不会强制注销，因此本次无法验证新密码是否正确。")
         return
     client.login(str(credentials["username"]), str(credentials["password"]))
     print("✓ 登录信息验证成功，校园网已经连通。")
@@ -182,7 +181,8 @@ def privileged_install() -> None:
     print("正在安装程序和开机服务，这可能需要一小会儿…")
     service.install(PROJECT_DIR, credentials)
     if sys.platform == "win32":
-        print("✓ 设置完成！当前用户登录 Windows 后会自动连接校园网。")
+        print("✓ 设置完成！后台任务已经启动，以后登录 Windows 时也会自动联网。")
+        print("  后台运行不会再打开可见窗口；可以继续使用当前菜单。")
     else:
         print("✓ 安装完成！后台服务已立即启动，并已设置为开机自动连接校园网。")
 
@@ -220,30 +220,12 @@ def edit_preferences(settings: Dict[str, Any]) -> None:
     print("✓ 设置已保存。")
 
 
-def network_menu(settings: Dict[str, Any]) -> None:
-    while True:
-        choice = select("立即联网", [
-            ("login", "连接校园网"),
-            ("status", "查看当前状态"),
-            ("logout", "注销当前连接"),
-            ("back", "返回上一级"),
-        ])
-        if choice in (None, "back"):
-            return
-        try:
-            {"login": login_once, "status": show_status, "logout": logout}[choice](settings)
-        except (SrunError, RuntimeError, ValueError, OSError) as error:
-            print("这次没有完成：{}".format(error))
-        pause()
-
-
 def service_menu(settings: Dict[str, Any]) -> None:
     while True:
         is_installed = service.installed()
         install_label = "更新或修复开机自动联网" if is_installed else "安装开机自动联网"
         choice = select("自动运行", [
             ("install", install_label),
-            ("foreground", "仅在当前终端自动重连"),
             ("credentials", "更新后台账号和密码"),
             ("status", "查看后台运行状态"),
             ("logs", "查看后台日志"),
@@ -253,12 +235,13 @@ def service_menu(settings: Dict[str, Any]) -> None:
         if choice in (None, "back"):
             return
         try:
-            if choice == "foreground":
-                foreground_watch(settings)
-            elif choice == "install":
+            if choice == "install":
                 if sys.platform == "win32":
                     print("\n将创建当前用户登录时运行的计划任务；无需管理员权限。")
-                    print("请保留程序所在位置，密码不会写入任务命令行。")
+                    if getattr(sys, "frozen", False):
+                        print("程序会复制到当前用户的应用数据目录；密码不会写入任务命令行。")
+                    else:
+                        print("源码版任务依赖当前程序目录，请勿移动；密码不会写入任务命令行。")
                 elif sys.platform == "darwin":
                     print("\n程序将安装到系统 Application Support，并创建系统级 LaunchDaemon。")
                     print("登录信息只允许当前本地用户读取，不需要登录桌面或解锁钥匙串。")
@@ -313,7 +296,7 @@ def service_menu(settings: Dict[str, Any]) -> None:
             print("\n已经停下来了。")
         except (SrunError, RuntimeError, ValueError, OSError) as error:
             print("这次没有完成：{}".format(error))
-        if choice not in {"foreground", "logs"}:
+        if choice != "logs":
             pause()
 
 
@@ -354,24 +337,31 @@ def interactive_menu() -> int:
     print("这里可以帮你立即联网，也可以设置自动联网。")
     while True:
         choice = select("想先做什么？", [
-            ("login", "一键登录"),
-            ("status", "查看联网状态"),
-            ("service", "设置自动联网"),
-            ("network", "更多网络操作"),
-            ("help", "设置与帮助"),
+            ("login", "连接校园网"),
+            ("status", "查看连接状态"),
+            ("logout", "注销当前连接"),
+            ("foreground", "临时自动重连（关闭窗口即停止）"),
+            ("service", "开机自动联网与后台服务"),
+            ("help", "设置、安全与帮助"),
             ("exit", "退出"),
-        ])
+        ], empty_action="退出")
         if choice in (None, "exit"):
             print("再见，祝你网络顺畅！")
             return 0
-        if choice in {"login", "status"}:
+        if choice in {"login", "status", "logout", "foreground"}:
             try:
-                {"login": login_once, "status": show_status}[choice](settings)
+                {
+                    "login": login_once,
+                    "status": show_status,
+                    "logout": logout,
+                    "foreground": foreground_watch,
+                }[choice](settings)
             except (SrunError, RuntimeError, ValueError, OSError) as error:
                 print("这次没有完成：{}".format(error))
-            pause()
+            if choice != "foreground":
+                pause()
         else:
-            {"network": network_menu, "service": service_menu, "help": help_menu}[choice](settings)
+            {"service": service_menu, "help": help_menu}[choice](settings)
 
 
 def main() -> int:
@@ -397,9 +387,9 @@ def main() -> int:
             foreground_watch(settings)
         elif args.command == "_watch":
             if sys.platform == "win32" and getattr(sys, "frozen", False):
-                # The bundled console executable stays interactive for the
-                # menu, but detaches its window when started as a background task.
-                ctypes.windll.kernel32.FreeConsole()
+                # Keep the bundled executable interactive when opened normally,
+                # but hide the console created by Task Scheduler for _watch.
+                service.hide_console_window()
             runtime_watch()
         elif args.command == "_system-install":
             privileged_install()

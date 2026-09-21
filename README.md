@@ -175,6 +175,7 @@ macOS 使用上文所述的用户专用 Application Support 凭据目录，遵�
 .
 ├── main.py
 ├── start-windows.cmd # Windows 双击入口
+├── assets/             # 项目图标及 Windows 多尺寸 ICO
 ├── netlogin/
 │   ├── client.py       # 现代 Srun 协议
 │   ├── service.py      # 系统级安装、凭据和 systemd 管理

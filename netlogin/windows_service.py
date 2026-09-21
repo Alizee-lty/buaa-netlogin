@@ -19,6 +19,15 @@ LOG_PATH = DATA_DIR / "netlogin.log"
 INSTALLED_EXE = DATA_DIR / "BUAA-NetLogin.exe"
 
 
+def hide_console_window() -> None:
+    """Hide the console created for the background scheduled task."""
+    if sys.platform != "win32":
+        return
+    window = ctypes.windll.kernel32.GetConsoleWindow()
+    if window:
+        ctypes.windll.user32.ShowWindow(window, 0)  # SW_HIDE
+
+
 class _DataBlob(ctypes.Structure):
     _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_byte))]
 

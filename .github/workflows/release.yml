@@ -46,7 +46,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_client.py -v
       - run: python -m unittest discover -s tests -p test_windows_service.py -v
       - run: python -m unittest discover -s tests -p test_ui.py -v
-      - run: python -m PyInstaller --clean --onefile --exclude-module setuptools --exclude-module pkg_resources --name BUAA-NetLogin main.py
+      - run: python -m PyInstaller --clean --onefile --exclude-module setuptools --exclude-module pkg_resources --icon assets/buaa-netlogin.ico --name BUAA-NetLogin main.py
       - name: Smoke-test standalone executable
         shell: pwsh
         run: |

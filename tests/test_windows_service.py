@@ -11,6 +11,14 @@ from netlogin import windows_service as service
 
 
 class WindowsServiceTests(unittest.TestCase):
+    def test_background_watch_hides_its_console(self):
+        with patch.object(service.sys, "platform", "win32"), patch.object(
+            service.ctypes, "windll", create=True
+        ) as windll:
+            windll.kernel32.GetConsoleWindow.return_value = 123
+            service.hide_console_window()
+        windll.user32.ShowWindow.assert_called_once_with(123, 0)
+
     def test_task_xml_is_current_user_only_without_credentials(self):
         with patch.dict(service.os.environ, {"USERNAME": "alice", "USERDOMAIN": "PC"}), patch.object(
             service.sys, "executable", r"C:\Python\python.exe"

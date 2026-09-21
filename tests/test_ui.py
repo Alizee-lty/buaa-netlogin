@@ -15,6 +15,13 @@ class UiTests(unittest.TestCase):
             result = ui.select("Test", [("one", "One")])
         self.assertIsNone(result)
 
+    def test_fallback_can_describe_empty_input_as_exit(self):
+        with patch.object(ui.sys.stdin, "isatty", return_value=False), patch(
+            "builtins.input", return_value=""
+        ) as prompt:
+            self.assertIsNone(ui.select("Test", [("one", "One")], empty_action="退出"))
+        self.assertIn("直接回车退出", prompt.call_args.args[0])
+
     def test_confirmation_honours_default(self):
         with patch.object(ui.sys.stdin, "isatty", return_value=False), patch("builtins.input", return_value=""):
             self.assertTrue(ui.confirm("Continue?", default=True))
