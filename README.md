@@ -1,14 +1,35 @@
-# buaa-netlogin
+# BUAA NetLogin：北航校园网自动登录工具
 
-一个轻量的北航校园网自动登录工具。
+[![Tests](https://github.com/Alizee-lty/buaa-netlogin/actions/workflows/tests.yml/badge.svg)](https://github.com/Alizee-lty/buaa-netlogin/actions/workflows/tests.yml)
+[![Latest Release](https://img.shields.io/github/v/release/Alizee-lty/buaa-netlogin?display_name=tag&sort=semver)](https://github.com/Alizee-lty/buaa-netlogin/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Alizee-lty/buaa-netlogin/total)](https://github.com/Alizee-lty/buaa-netlogin/releases)
+[![License: GPL-3.0](https://img.shields.io/github/license/Alizee-lty/buaa-netlogin)](LICENSE)
+
+适用于**北京航空航天大学（北航、BUAA、Beihang）**的跨平台校园网自动登录、
+断线重连和开机自启动工具。支持 Windows、Linux 和 macOS，使用现代 Srun/深澜认证协议；
+下载 Release 独立程序即可运行，**无需安装 Python**。
 
 它支持：
 
 - 手动登录和断线自动重连；
 - Linux systemd、macOS launchd 开机自动运行，Windows 用户登录后自动运行；
+- Windows DPAPI、Linux systemd credentials 等本机凭据保护措施；
 - 通过中文菜单完成配置，不需要记忆复杂命令。
 
 如果程序运行在路由器上，通常一个网络出口运行一个后台服务即可，详见[路由器部署](#路由器部署)。
+
+## 为什么选择 BUAA NetLogin
+
+| 能力 | BUAA NetLogin | 常见单文件登录脚本 |
+| --- | --- | --- |
+| Windows、Linux、macOS | 支持 | 通常仅支持单一系统 |
+| 无 Python 环境直接运行 | 提供 Release 独立程序 | 通常需要配置 Python 和依赖 |
+| 断线检测与自动重连 | 内置 | 需要自行编写循环或定时任务 |
+| 开机自动运行 | 中文菜单自动配置 | 需要手动配置系统服务 |
+| 凭据保护 | 不写入任务参数，并限制本地文件权限 | 常见做法是明文配置文件 |
+| 安装失败恢复 | 保留旧版本并自动回滚 | 通常需要手动修复 |
+
+> 本项目不是北京航空航天大学官方软件。请遵守校园网管理规定，并仅在自己获授权的设备和账号上使用。
 
 ## 下载独立程序（推荐）
 
@@ -48,7 +69,7 @@ python3 -m venv .venv
 /usr/bin/python3 --version
 ```
 
-程序启动后会进入中文菜单；首页可直接“一键登录”或“查看联网状态”。Linux/macOS 使用方向键，Windows 输入菜单序号。
+程序启动后会进入中文菜单；首页可直接连接、查看状态、注销或配置自动重连。Linux/macOS 使用方向键，Windows 输入菜单序号。
 
 ### Windows 源码运行
 
@@ -59,7 +80,7 @@ python3 -m venv .venv
 选择：
 
 ```text
-设置自动联网
+开机自动联网与后台服务
   → 安装或更新开机自动联网
 ```
 
@@ -106,11 +127,12 @@ Windows 创建只在**当前用户登录后**运行的计划任务，不会在�
 管理功能都在“自动运行”二级菜单中：
 
 - 安装或更新开机自动联网
-- 仅在当前终端自动重连
 - 更新后台账号和密码
 - 查看后台运行状态
 - 查看后台日志
 - 卸载开机自动联网
+
+“临时自动重连（关闭窗口即停止）”位于首页，适合不想安装后台服务的临时使用场景。
 
 Linux/macOS 的“查看后台日志”会持续刷新，按 `Ctrl+C` 只会退出日志查看，不会停止后台服务。Windows 则显示最近 80 条日志。
 
