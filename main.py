@@ -17,10 +17,49 @@ elif sys.platform == "win32":
 else:
     from netlogin import service
 from netlogin.settings import load_settings, save_settings
-from netlogin.ui import confirm, pause, select
+from netlogin.ui import banner, confirm, pause, select
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
+
+
+class FailureReporter:
+    """Keep long-running service logs useful without hiding persistent faults."""
+
+    def __init__(self, report: Any, repeat_every: int = 20) -> None:
+        self.report = report
+        self.repeat_every = repeat_every
+        self.last_error = ""
+        self.count = 0
+
+    def failure(self, message: str, key: str = "") -> None:
+        identity = key or message
+        if identity != self.last_error:
+            self.last_error = identity
+            self.count = 1
+            self.report(message, True)
+            return
+        self.count += 1
+        if self.count % self.repeat_every == 0:
+            self.report("{}（同类问题已连续出现 {} 次）".format(message, self.count), True)
+
+    def recovered(self, message: str) -> None:
+        if self.count:
+            self.report("{}（此前连续失败 {} 次）".format(message, self.count))
+        self.last_error = ""
+        self.count = 0
+
+
+def show_error(error: BaseException, context: str = "操作未完成") -> None:
+    """Present an actionable error while keeping technical details concise."""
+    print("\n✗ {}".format(context))
+    print("  原因：{}".format(error))
+    if isinstance(error, SrunError):
+        print("  建议：确认设备已连接北航校园网；若仍失败，可稍后重试或查看后台日志。")
+    elif isinstance(error, ValueError):
+        print("  建议：检查刚才输入的数字或选项后再试一次。")
+    else:
+        print("  原有设置未被主动删除；可重试，或从“查看运行日志”继续排查。")
 
 
 def client_from(settings: Dict[str, Any]) -> SrunClient:
@@ -55,12 +94,16 @@ def ask_credentials(settings: Dict[str, Any], save_offer: bool = True) -> Tuple[
 
 
 def show_status(settings: Dict[str, Any]) -> None:
-    print("正在看看当前网络状态…")
+    print("\n… 正在检查校园网状态")
     status = client_from(settings).status()
     if status.online:
-        print("✓ 已经在线，当前 IP 是 {}。".format(status.ip or "未知"))
+        print("✓ 当前状态：在线")
+        print("  校园网 IP：{}".format(status.ip or "未知"))
+        if status.username:
+            print("  登录账号：{}".format(status.username))
     else:
-        print("当前还没有连接校园网。")
+        print("○ 当前状态：未登录")
+        print("  可以返回主页选择“立即连接校园网”。")
 
 
 def login_once(settings: Dict[str, Any]) -> None:
@@ -115,17 +158,26 @@ def runtime_watch() -> None:
         else:
             print(message, file=sys.stderr if error else sys.stdout, flush=True)
 
+    failures = FailureReporter(report)
     report("校园网自动守护已启动，检查间隔 {} 秒。".format(interval))
     while True:
         try:
             if not client.status().online:
                 client.login(username, password)
-                report("{} 网络已重新连接。".format(time.strftime("%F %T")))
+                failures.recovered("{} 网络已重新连接。".format(time.strftime("%F %T")))
+            elif failures.count:
+                failures.recovered("{} 网关通信已恢复，网络保持在线。".format(time.strftime("%F %T")))
         except SrunError as error:
             if sys.platform == "win32":
-                report("{} 连接暂时失败，稍后重试。".format(time.strftime("%F %T")), error=True)
+                failures.failure(
+                    "{} 连接暂时失败，稍后重试。".format(time.strftime("%F %T")),
+                    key=str(error),
+                )
             else:
-                report("{} 连接暂时失败：{}".format(time.strftime("%F %T"), error), error=True)
+                failures.failure(
+                    "{} 连接暂时失败：{}".format(time.strftime("%F %T"), error),
+                    key=str(error),
+                )
         time.sleep(interval)
 
 
@@ -224,13 +276,13 @@ def service_menu(settings: Dict[str, Any]) -> None:
     while True:
         is_installed = service.installed()
         install_label = "更新或修复开机自动联网" if is_installed else "安装开机自动联网"
-        choice = select("自动运行", [
-            ("install", install_label),
-            ("credentials", "更新后台账号和密码"),
-            ("status", "查看后台运行状态"),
-            ("logs", "查看后台日志"),
-            ("uninstall", "卸载开机自动联网"),
-            ("back", "返回上一级"),
+        choice = select("自动运行 · {}".format("已设置" if is_installed else "未设置"), [
+            ("install", install_label, "安装程序并立即启动后台守护"),
+            ("credentials", "更新后台登录信息", "更换账号、密码或检查间隔"),
+            ("status", "查看运行状态", "确认任务是否安装并正在运行"),
+            ("logs", "查看运行日志", "排查掉线、网关响应和重连问题"),
+            ("uninstall", "卸载自动联网", "同时删除本机保存的后台凭据"),
+            ("back", "返回主页", "不进行任何修改"),
         ])
         if choice in (None, "back"):
             return
@@ -295,7 +347,7 @@ def service_menu(settings: Dict[str, Any]) -> None:
         except KeyboardInterrupt:
             print("\n已经停下来了。")
         except (SrunError, RuntimeError, ValueError, OSError) as error:
-            print("这次没有完成：{}".format(error))
+            show_error(error)
         if choice != "logs":
             pause()
 
@@ -303,10 +355,10 @@ def service_menu(settings: Dict[str, Any]) -> None:
 def help_menu(settings: Dict[str, Any]) -> None:
     while True:
         choice = select("设置与帮助", [
-            ("preferences", "调整前台检查间隔"),
-            ("security", "了解账号密码如何保护"),
-            ("about", "关于这个项目"),
-            ("back", "返回上一级"),
+            ("preferences", "调整检查间隔", "仅影响临时自动重连，默认 30 秒"),
+            ("security", "账号密码与安全", "查看不同系统上的凭据保护方式"),
+            ("about", "关于 BUAA NetLogin", "版本定位、协议与开源许可"),
+            ("back", "返回主页", "不进行任何修改"),
         ])
         if choice in (None, "back"):
             return
@@ -327,23 +379,27 @@ def help_menu(settings: Dict[str, Any]) -> None:
                 print("\nbuaa-netlogin 是一个 GPL-3.0 的北航校园网轻量登录工具。")
                 print("它使用现代 Srun challenge 协议，不需要 Docker。")
         except (SrunError, ValueError, OSError) as error:
-            print("设置没有保存：{}".format(error))
+            show_error(error, "设置没有保存")
         pause()
 
 
 def interactive_menu() -> int:
     settings = load_settings()
-    print("\n你好，欢迎使用 BUAA NetLogin 👋")
-    print("这里可以帮你立即联网，也可以设置自动联网。")
+    try:
+        automatic = service.installed()
+    except (OSError, subprocess.SubprocessError):
+        automatic = None
+    banner(automatic)
+    print("选择一项即可开始；直接回车或按 Esc 安全退出。")
     while True:
-        choice = select("想先做什么？", [
-            ("login", "连接校园网"),
-            ("status", "查看连接状态"),
-            ("logout", "注销当前连接"),
-            ("foreground", "临时自动重连（关闭窗口即停止）"),
-            ("service", "开机自动联网与后台服务"),
-            ("help", "设置、安全与帮助"),
-            ("exit", "退出"),
+        choice = select("主页", [
+            ("login", "立即连接校园网", "输入账号密码；密码不会保存"),
+            ("status", "查看当前网络状态", "检查是否在线以及当前校园网 IP"),
+            ("foreground", "临时保持在线", "自动检查并重连；关闭窗口即停止"),
+            ("service", "设置开机自动联网", "安装、更新、查看日志或卸载后台服务"),
+            ("logout", "注销当前连接", "主动断开这台设备的校园网会话"),
+            ("help", "设置、安全与帮助", "检查间隔、凭据保护和项目信息"),
+            ("exit", "退出程序", "后台自动联网如已安装，将继续运行"),
         ], empty_action="退出")
         if choice in (None, "exit"):
             print("再见，祝你网络顺畅！")
@@ -357,7 +413,7 @@ def interactive_menu() -> int:
                     "foreground": foreground_watch,
                 }[choice](settings)
             except (SrunError, RuntimeError, ValueError, OSError) as error:
-                print("这次没有完成：{}".format(error))
+                show_error(error)
             if choice != "foreground":
                 pause()
         else:

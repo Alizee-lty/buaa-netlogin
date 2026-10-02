@@ -38,7 +38,11 @@
 
 - Windows x64：下载 `BUAA-NetLogin-windows-x86_64.exe`，双击运行；
 - Linux：下载名称与本机架构一致的 `BUAA-NetLogin-linux-*`，赋予执行权限后运行；
-- macOS Apple Silicon：下载 `BUAA-NetLogin-macos-arm64`，赋予执行权限后运行；Intel Mac 暂时请从源码运行。
+- macOS Apple Silicon：下载 `BUAA-NetLogin-macos-arm64`；
+- macOS Intel：下载 `BUAA-NetLogin-macos-x86_64`。
+
+macOS 请优先下载对应的 `.tar.gz`，解压后运行；压缩包可以保留可执行权限。项目分别在 GitHub
+官方的 Apple Silicon 与 Intel runner 上原生构建，不依赖 Rosetta 转译。
 
 Linux/macOS 首次运行：
 
@@ -121,6 +125,8 @@ macOS 13 及以上会在“系统设置 → 通用 → 登录项”中展示后�
 ### Windows（计划任务）
 
 Windows 创建只在**当前用户登录后**运行的计划任务，不会在无人登录时运行。任务仅包含 Python/程序路径及 `_watch` 参数，不含校园网账号密码。凭据使用当前用户范围的 Windows DPAPI 加密，密文保存在 `%LOCALAPPDATA%\BUAA NetLogin\account.dat`；运行日志在同目录的 `netlogin.log`。同一 Windows 用户、管理员或完全控制本机的程序仍可能读取凭据，DPAPI 不隔离同用户进程。
+
+后台会立即记录新的连接故障；相同故障持续发生时改为定期汇总，并在恢复后记录失败次数，避免每次检查都重复刷屏。Windows 日志达到约 512 KiB 后自动保留一份旧日志并重新开始，防止长期运行无限占用磁盘。
 
 安装后任务会立即启动，后续每次登录时重新启动，并禁用任务计划程序默认的 72 小时运行上限。卸载会删除任务、凭据密文和日志。不要向别人发送自己的 `account.dat`。
 

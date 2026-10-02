@@ -26,6 +26,37 @@ class OnlineStatus:
     ip: Optional[str] = None
 
 
+def _status_from_text(text: str) -> Optional[OnlineStatus]:
+    """Parse the status formats seen across Srun gateway versions."""
+    value = text.strip().lstrip("\ufeff")
+    if not value:
+        return None
+
+    fields = [field.strip() for field in value.split(",")]
+    if fields[0] in OFFLINE_STATUS_VALUES:
+        return OnlineStatus(False)
+    if len(fields) >= 9 and fields[0] and fields[8]:
+        return OnlineStatus(True, username=fields[0], ip=fields[8])
+
+    # Some Srun deployments return a JSON object instead of the traditional
+    # comma-separated response. Supporting it here costs no extra dependency
+    # and avoids treating a harmless gateway upgrade as a network outage.
+    try:
+        payload = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    result = str(payload.get("error") or payload.get("res") or "")
+    if result in OFFLINE_STATUS_VALUES:
+        return OnlineStatus(False)
+    username = payload.get("user_name") or payload.get("username")
+    ip = payload.get("online_ip") or payload.get("client_ip") or payload.get("ip")
+    if username and ip:
+        return OnlineStatus(True, username=str(username), ip=str(ip))
+    return None
+
+
 def _to_words(value: str, include_length: bool) -> List[int]:
     words = []
     for index in range(0, len(value), 4):
@@ -127,11 +158,9 @@ class SrunClient:
         last_error: Optional[SrunError] = None
         for attempt in range(3):
             try:
-                fields = self._get("/cgi-bin/rad_user_info").text.strip().split(",")
-                if fields[0] in OFFLINE_STATUS_VALUES:
-                    return OnlineStatus(False)
-                if len(fields) >= 9:
-                    return OnlineStatus(True, username=fields[0], ip=fields[8])
+                status = _status_from_text(self._get("/cgi-bin/rad_user_info").text)
+                if status is not None:
+                    return status
                 last_error = SrunError("网关在线状态响应格式异常")
             except SrunError as error:
                 last_error = error

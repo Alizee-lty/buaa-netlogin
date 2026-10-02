@@ -46,6 +46,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_client.py -v
       - run: python -m unittest discover -s tests -p test_windows_service.py -v
       - run: python -m unittest discover -s tests -p test_ui.py -v
+      - run: python -m unittest discover -s tests -p test_main.py -v
       - run: python -m PyInstaller --clean --onefile --exclude-module setuptools --exclude-module pkg_resources --icon assets/buaa-netlogin.ico --name BUAA-NetLogin main.py
       - name: Smoke-test standalone executable
         shell: pwsh
@@ -64,7 +65,10 @@ jobs:
           if-no-files-found: error
 
   build-macos:
-    runs-on: macos-26
+    strategy:
+      matrix:
+        os: [macos-26, macos-15-intel]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -82,7 +86,7 @@ jobs:
           tar -C release-assets -czf "release-assets/BUAA-NetLogin-macos-${arch}.tar.gz" "BUAA-NetLogin-macos-${arch}"
       - uses: actions/upload-artifact@v7
         with:
-          name: release-macos
+          name: release-macos-${{ matrix.os }}
           path: release-assets/
           if-no-files-found: error
 

@@ -17,6 +17,7 @@ DATA_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Lo
 CREDENTIAL_PATH = DATA_DIR / "account.dat"
 LOG_PATH = DATA_DIR / "netlogin.log"
 INSTALLED_EXE = DATA_DIR / "BUAA-NetLogin.exe"
+MAX_LOG_BYTES = 512 * 1024
 
 
 def hide_console_window() -> None:
@@ -199,6 +200,7 @@ def uninstall(remove_data: bool = True) -> None:
     if remove_data:
         CREDENTIAL_PATH.unlink(missing_ok=True)
         LOG_PATH.unlink(missing_ok=True)
+        LOG_PATH.with_suffix(".log.old").unlink(missing_ok=True)
         if INSTALLED_EXE.exists() and Path(sys.executable).resolve() != INSTALLED_EXE.resolve():
             INSTALLED_EXE.unlink()
 
@@ -213,6 +215,13 @@ def status() -> int:
 
 def log_line(message: str) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        if LOG_PATH.stat().st_size >= MAX_LOG_BYTES:
+            backup = LOG_PATH.with_suffix(".log.old")
+            backup.unlink(missing_ok=True)
+            os.replace(str(LOG_PATH), str(backup))
+    except FileNotFoundError:
+        pass
     with LOG_PATH.open("a", encoding="utf-8") as stream:
         stream.write(message + "\n")
 

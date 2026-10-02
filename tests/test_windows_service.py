@@ -86,6 +86,18 @@ class WindowsServiceTests(unittest.TestCase):
             self.assertEqual(data["password"], "secret")
             dpapi.assert_called_once_with(b"encrypted", decrypt=True)
 
+    def test_log_is_rotated_before_it_grows_without_bound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            log_path = data_dir / "netlogin.log"
+            log_path.write_bytes(b"x" * 20)
+            with patch.object(service, "DATA_DIR", data_dir), patch.object(
+                service, "LOG_PATH", log_path
+            ), patch.object(service, "MAX_LOG_BYTES", 10):
+                service.log_line("new entry")
+            self.assertEqual(log_path.read_text(encoding="utf-8"), "new entry\n")
+            self.assertEqual(log_path.with_suffix(".log.old").read_bytes(), b"x" * 20)
+
 
 if __name__ == "__main__":
     unittest.main()

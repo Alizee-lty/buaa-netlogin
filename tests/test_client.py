@@ -31,6 +31,26 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(status.username, "user")
         self.assertEqual(status.ip, "10.0.0.1")
 
+    def test_status_accepts_whitespace_and_utf8_bom(self):
+        session = Mock()
+        session.get.return_value = self.response("\ufeff user ,1,2,3,4,5,6,7, 10.0.0.2 \n")
+        status = SrunClient(session=session).status()
+        self.assertEqual((status.username, status.ip), ("user", "10.0.0.2"))
+
+    def test_status_accepts_json_gateway_response(self):
+        session = Mock()
+        session.get.return_value = self.response(
+            '{"res":"ok","user_name":"demo","online_ip":"10.0.0.3"}'
+        )
+        status = SrunClient(session=session).status()
+        self.assertTrue(status.online)
+        self.assertEqual((status.username, status.ip), ("demo", "10.0.0.3"))
+
+    def test_status_accepts_json_offline_response(self):
+        session = Mock()
+        session.get.return_value = self.response('{"error":"not_online_error"}')
+        self.assertFalse(SrunClient(session=session).status().online)
+
     def test_invalid_status(self):
         session = Mock()
         session.get.return_value = self.response("invalid")
