@@ -78,7 +78,9 @@ def _interactive_display_available() -> bool:
 
 
 def _fallback_select(title: str, options: Sequence[Option], empty_action: str = "返回") -> Optional[str]:
-    print("\n{}\n{}".format(title, "─" * 42))
+    # Keep the numbered fallback ASCII-only around its user-provided labels.
+    # It is used precisely when terminal capabilities/encoding are uncertain.
+    print("\n{}\n{}".format(title, "-" * 42))
     for index, option in enumerate(options, 1):
         _, label, description = _option(option)
         print("  {}. {}".format(index, label))
