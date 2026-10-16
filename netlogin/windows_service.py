@@ -3,8 +3,10 @@
 import ctypes
 import json
 import os
+import shutil
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 from ctypes import wintypes
 from pathlib import Path, PureWindowsPath
@@ -157,15 +159,35 @@ def run_as_root(action: str) -> int:
     raise RuntimeError("Windows 自动联网无需管理员权限；请从菜单直接设置")
 
 
+def _replace_executable(source: Path, target: Path, attempts: int = 40, delay: float = 0.25) -> None:
+    """Stage and atomically replace an executable after Windows releases it."""
+    staged = target.with_suffix(target.suffix + ".new")
+    staged.unlink(missing_ok=True)
+    shutil.copy2(source, staged)
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            os.replace(str(staged), str(target))
+            return
+        except PermissionError as error:
+            last_error = error
+            if attempt + 1 < attempts:
+                time.sleep(delay)
+    staged.unlink(missing_ok=True)
+    raise RuntimeError(
+        "旧版后台程序仍在退出，Windows 暂时无法替换文件。"
+        "请在任务管理器中结束 BUAA-NetLogin.exe 后重试；登录信息尚未被修改"
+    ) from last_error
+
+
 def install(source: Path, credentials: Dict[str, Any]) -> None:
     task_xml = _task_xml(source)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if installed():
         _task("/end", "/tn", TASK_NAME)
     if getattr(sys, "frozen", False):
-        import shutil
         if Path(sys.executable).resolve() != INSTALLED_EXE.resolve():
-            shutil.copy2(sys.executable, INSTALLED_EXE)
+            _replace_executable(Path(sys.executable), INSTALLED_EXE)
         # Windows Script Host reliably detects UTF-16, including user profile
         # paths containing Chinese or other non-ASCII characters.
         LAUNCHER_PATH.write_text(_background_launcher(INSTALLED_EXE, "_watch"), encoding="utf-16")
@@ -213,6 +235,7 @@ def uninstall(remove_data: bool = True) -> None:
         LOG_PATH.unlink(missing_ok=True)
         LOG_PATH.with_suffix(".log.old").unlink(missing_ok=True)
         LAUNCHER_PATH.unlink(missing_ok=True)
+        INSTALLED_EXE.with_suffix(INSTALLED_EXE.suffix + ".new").unlink(missing_ok=True)
         if INSTALLED_EXE.exists() and Path(sys.executable).resolve() != INSTALLED_EXE.resolve():
             INSTALLED_EXE.unlink()
 

@@ -95,6 +95,41 @@ class WindowsServiceTests(unittest.TestCase):
             self.assertIn("/xml", command)
             self.assertNotIn("secret", str(command))
 
+    def test_executable_update_waits_for_windows_to_release_old_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "downloaded.exe"
+            target = Path(directory) / "installed.exe"
+            source.write_bytes(b"new-version")
+            target.write_bytes(b"old-version")
+            real_replace = service.os.replace
+            calls = 0
+
+            def temporarily_locked(staged, destination):
+                nonlocal calls
+                calls += 1
+                if calls < 3:
+                    raise PermissionError(32, "file in use")
+                return real_replace(staged, destination)
+
+            with patch.object(service.os, "replace", side_effect=temporarily_locked), patch.object(
+                service.time, "sleep"
+            ) as sleep:
+                service._replace_executable(source, target, attempts=3, delay=0.01)
+            self.assertEqual(target.read_bytes(), b"new-version")
+            self.assertEqual(sleep.call_count, 2)
+
+    def test_executable_update_gives_actionable_error_if_lock_persists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "downloaded.exe"
+            target = Path(directory) / "installed.exe"
+            source.write_bytes(b"new-version")
+            with patch.object(service.os, "replace", side_effect=PermissionError(32, "file in use")), patch.object(
+                service.time, "sleep"
+            ):
+                with self.assertRaisesRegex(RuntimeError, "任务管理器"):
+                    service._replace_executable(source, target, attempts=2, delay=0)
+            self.assertFalse(target.with_suffix(".exe.new").exists())
+
     def test_credentials_are_decrypted_only_at_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             credential_path = Path(directory) / "account.dat"
