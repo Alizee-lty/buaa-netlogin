@@ -7,7 +7,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from ctypes import wintypes
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Dict
 
 
@@ -17,6 +17,7 @@ DATA_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Lo
 CREDENTIAL_PATH = DATA_DIR / "account.dat"
 LOG_PATH = DATA_DIR / "netlogin.log"
 INSTALLED_EXE = DATA_DIR / "BUAA-NetLogin.exe"
+LAUNCHER_PATH = DATA_DIR / "background.vbs"
 MAX_LOG_BYTES = 512 * 1024
 
 
@@ -81,6 +82,12 @@ def read_runtime_credentials() -> Dict[str, Any]:
     return data
 
 
+def _background_launcher(executable: Path, arguments: str) -> str:
+    """Return a tiny Windows-native launcher that never creates a console."""
+    command = '"{}" {}'.format(executable, arguments).replace('"', '""')
+    return 'CreateObject("WScript.Shell").Run "{}", 0, True\r\n'.format(command)
+
+
 def _task_xml(source: Path) -> bytes:
     namespace = "http://schemas.microsoft.com/windows/2004/02/mit/task"
     ET.register_namespace("", namespace)
@@ -110,12 +117,13 @@ def _task_xml(source: Path) -> bytes:
     element(settings, "ExecutionTimeLimit", "PT0S")
     actions = element(root, "Actions")
     if getattr(sys, "frozen", False):
-        executable = INSTALLED_EXE
+        executable = PureWindowsPath(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "wscript.exe"
+        arguments = [str(LAUNCHER_PATH)]
     else:
         python = Path(sys.executable)
         pythonw = python.with_name("pythonw.exe")
         executable = pythonw if pythonw.exists() else python
-    arguments = ["_watch"] if getattr(sys, "frozen", False) else [str(source / "main.py"), "_watch"]
+        arguments = [str(source / "main.py"), "_watch"]
     action = element(actions, "Exec")
     element(action, "Command", str(executable))
     element(action, "Arguments", subprocess.list2cmdline(arguments))
@@ -158,6 +166,9 @@ def install(source: Path, credentials: Dict[str, Any]) -> None:
         import shutil
         if Path(sys.executable).resolve() != INSTALLED_EXE.resolve():
             shutil.copy2(sys.executable, INSTALLED_EXE)
+        # Windows Script Host reliably detects UTF-16, including user profile
+        # paths containing Chinese or other non-ASCII characters.
+        LAUNCHER_PATH.write_text(_background_launcher(INSTALLED_EXE, "_watch"), encoding="utf-16")
     previous = CREDENTIAL_PATH.read_bytes() if CREDENTIAL_PATH.exists() else None
     _save_credentials(credentials)
     # The task contains no credentials, runs only in this user's interactive
@@ -201,6 +212,7 @@ def uninstall(remove_data: bool = True) -> None:
         CREDENTIAL_PATH.unlink(missing_ok=True)
         LOG_PATH.unlink(missing_ok=True)
         LOG_PATH.with_suffix(".log.old").unlink(missing_ok=True)
+        LAUNCHER_PATH.unlink(missing_ok=True)
         if INSTALLED_EXE.exists() and Path(sys.executable).resolve() != INSTALLED_EXE.resolve():
             INSTALLED_EXE.unlink()
 

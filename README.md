@@ -124,7 +124,7 @@ macOS 13 及以上会在“系统设置 → 通用 → 登录项”中展示后�
 
 ### Windows（计划任务）
 
-Windows 创建只在**当前用户登录后**运行的计划任务，不会在无人登录时运行。任务仅包含 Python/程序路径及 `_watch` 参数，不含校园网账号密码。凭据使用当前用户范围的 Windows DPAPI 加密，密文保存在 `%LOCALAPPDATA%\BUAA NetLogin\account.dat`；运行日志在同目录的 `netlogin.log`。同一 Windows 用户、管理员或完全控制本机的程序仍可能读取凭据，DPAPI 不隔离同用户进程。
+Windows 创建只在**当前用户登录后**运行的计划任务，不会在无人登录时运行。Release 版通过 Windows 自带的无窗口脚本宿主启动守护程序，从进程创建开始就不显示控制台、任务栏或 Alt+Tab 窗口；双击下载的 EXE 仍会正常打开交互菜单。任务和启动脚本仅包含程序路径及 `_watch` 参数，不含校园网账号密码。凭据使用当前用户范围的 Windows DPAPI 加密，密文保存在 `%LOCALAPPDATA%\BUAA NetLogin\account.dat`；运行日志在同目录的 `netlogin.log`。同一 Windows 用户、管理员或完全控制本机的程序仍可能读取凭据，DPAPI 不隔离同用户进程。
 
 后台会立即记录新的连接故障；相同故障持续发生时改为定期汇总，并在恢复后记录失败次数，避免每次检查都重复刷屏。Windows 日志达到约 512 KiB 后自动保留一份旧日志并重新开始，防止长期运行无限占用磁盘。
 

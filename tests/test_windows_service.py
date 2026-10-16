@@ -32,6 +32,27 @@ class WindowsServiceTests(unittest.TestCase):
         self.assertIn("_watch", document.decode("utf-16"))
         self.assertNotIn("secret", document.decode("utf-16"))
 
+    def test_frozen_task_uses_hidden_windows_launcher(self):
+        with patch.dict(service.os.environ, {
+            "USERNAME": "alice", "USERDOMAIN": "PC", "SystemRoot": r"C:\Windows"
+        }), patch.object(service.sys, "frozen", True, create=True):
+            document = service._task_xml(Path(r"C:\Net Login"))
+        root = ET.fromstring(document)
+        namespace = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+        command = root.findtext("t:Actions/t:Exec/t:Command", namespaces=namespace)
+        arguments = root.findtext("t:Actions/t:Exec/t:Arguments", namespaces=namespace)
+        self.assertEqual(command, r"C:\Windows\System32\wscript.exe")
+        self.assertIn("background.vbs", arguments)
+        self.assertNotIn("_watch", arguments)
+
+    def test_background_launcher_starts_watch_hidden_and_waits(self):
+        script = service._background_launcher(
+            Path(r"C:\Users\Alice\AppData\Local\BUAA NetLogin\BUAA-NetLogin.exe"), "_watch"
+        )
+        self.assertIn('""C:\\Users\\Alice\\AppData', script)
+        self.assertIn('_watch"', script)
+        self.assertIn(', 0, True', script)
+
     def test_dpapi_refuses_non_windows_platform(self):
         with patch.object(service.sys, "platform", "linux"):
             with self.assertRaisesRegex(RuntimeError, "Windows"):
