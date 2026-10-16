@@ -142,6 +142,11 @@ def installed() -> bool:
     return _task("/query", "/tn", TASK_NAME).returncode == 0
 
 
+def residual_data() -> bool:
+    """Return whether an old installation can remain without its task."""
+    return any(path.exists() for path in (INSTALLED_EXE, LAUNCHER_PATH, CREDENTIAL_PATH, LOG_PATH))
+
+
 def active() -> bool:
     # Task Scheduler does not expose a stable, locale-independent running state.
     return installed()
@@ -157,6 +162,28 @@ def is_root() -> bool:
 
 def run_as_root(action: str) -> int:
     raise RuntimeError("Windows 自动联网无需管理员权限；请从菜单直接设置")
+
+
+def _stop_installed_executable() -> None:
+    """Stop only background copies running from this app's install path."""
+    powershell = shutil.which("powershell.exe") or str(
+        PureWindowsPath(os.environ.get("SystemRoot", r"C:\Windows"))
+        / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    )
+    path = str(INSTALLED_EXE).replace("'", "''")
+    script = (
+        "Get-CimInstance Win32_Process -Filter \"Name='BUAA-NetLogin.exe'\" | "
+        "Where-Object { $_.ExecutablePath -eq '" + path + "' -and $_.ProcessId -ne "
+        + str(os.getpid()) + " } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+    )
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creationflags,
+        check=False,
+    )
 
 
 def _replace_executable(source: Path, target: Path, attempts: int = 40, delay: float = 0.25) -> None:
@@ -187,6 +214,7 @@ def install(source: Path, credentials: Dict[str, Any]) -> None:
         _task("/end", "/tn", TASK_NAME)
     if getattr(sys, "frozen", False):
         if Path(sys.executable).resolve() != INSTALLED_EXE.resolve():
+            _stop_installed_executable()
             _replace_executable(Path(sys.executable), INSTALLED_EXE)
         # Windows Script Host reliably detects UTF-16, including user profile
         # paths containing Chinese or other non-ASCII characters.
@@ -231,6 +259,7 @@ def uninstall(remove_data: bool = True) -> None:
         if result.returncode:
             raise RuntimeError("无法删除 Windows 自动登录任务，凭据仍被保留")
     if remove_data:
+        _stop_installed_executable()
         CREDENTIAL_PATH.unlink(missing_ok=True)
         LOG_PATH.unlink(missing_ok=True)
         LOG_PATH.with_suffix(".log.old").unlink(missing_ok=True)

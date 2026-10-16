@@ -130,6 +130,30 @@ class WindowsServiceTests(unittest.TestCase):
                     service._replace_executable(source, target, attempts=2, delay=0)
             self.assertFalse(target.with_suffix(".exe.new").exists())
 
+    def test_orphan_cleanup_targets_only_installed_executable(self):
+        with patch.object(service.shutil, "which", return_value=r"C:\Windows\powershell.exe"), patch.object(
+            service.subprocess, "run", return_value=Mock(returncode=0)
+        ) as run:
+            service._stop_installed_executable()
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], r"C:\Windows\powershell.exe")
+        script = command[-1]
+        self.assertIn(str(service.INSTALLED_EXE), script)
+        self.assertIn("ExecutablePath -eq", script)
+        self.assertIn("ProcessId -ne", script)
+
+    def test_residual_installation_is_detected_without_scheduled_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            installed_exe = Path(directory) / "BUAA-NetLogin.exe"
+            with patch.object(service, "INSTALLED_EXE", installed_exe), patch.object(
+                service, "LAUNCHER_PATH", Path(directory) / "background.vbs"
+            ), patch.object(service, "CREDENTIAL_PATH", Path(directory) / "account.dat"), patch.object(
+                service, "LOG_PATH", Path(directory) / "netlogin.log"
+            ):
+                self.assertFalse(service.residual_data())
+                installed_exe.write_bytes(b"old")
+                self.assertTrue(service.residual_data())
+
     def test_credentials_are_decrypted_only_at_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             credential_path = Path(directory) / "account.dat"

@@ -335,9 +335,16 @@ def service_menu(settings: Dict[str, Any]) -> None:
                 if sys.platform != "win32":
                     print("\n✓ 已退出日志查看，后台自动联网仍在运行。")
             elif choice == "uninstall":
-                if not service.installed():
+                has_residual_data = bool(
+                    sys.platform == "win32"
+                    and getattr(service, "residual_data", lambda: False)()
+                )
+                if not service.installed() and not has_residual_data:
                     print("没有发现已安装的开机自动联网，不需要卸载。")
-                elif confirm("确定卸载，并删除保存的后台登录信息吗？"):
+                elif confirm(
+                    "检测到残留程序，是否清理？" if has_residual_data and not service.installed()
+                    else "确定卸载，并删除保存的后台登录信息吗？"
+                ):
                     if sys.platform == "win32":
                         privileged_uninstall()
                     else:
